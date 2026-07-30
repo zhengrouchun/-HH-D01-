@@ -1,0 +1,20 @@
+<MSG_LOG><MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] TCID exhaust, cast_mask = %u @gle_tm_hlp.c(84),WARNING" ID="0xde1402a3" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="gle trans mgt tcid init tcid_node GLE_NEW failed @gle_tm_hlp.c(91),ERROR" ID="0xde1402da" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] mem exhaust, data_len = %zu @gle_tm_hlp.c(110),WARNING" ID="0xde140373" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[GLE TM][TCID init] mode config parameters is NULL. @gle_tm_hlp.c(115),ERROR" ID="0xde14039a" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] mem exhaust, data_len = %zu @gle_tm_hlp.c(129),WARNING" ID="0xde14040b" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[GLE TM][TCID init] mode config parameters is NULL. @gle_tm_hlp.c(134),ERROR" ID="0xde140432" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] mem exhaust, data_len = %zu @gle_tm_hlp.c(155),WARNING" ID="0xde1404db" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] mem exhaust, data_len = %zu @gle_tm_hlp.c(165),WARNING" ID="0xde14052b" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] local TCID = 0x%04x @gle_tm_hlp.c(180),INFO" ID="0xde1405a5" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID init] used TCID list new failed, used TCID = 0x%04x @gle_tm_hlp.c(192),WARNING" ID="0xde140603" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][TCID done] local TCID = 0x%04x @gle_tm_hlp.c(251),INFO" ID="0xde1407dd" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][LCID init] mem exhaust, data_len = %zu @gle_tm_hlp.c(267),WARNING" ID="0xde14085b" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][LCID init] mem exhaust, data_len = %zu @gle_tm_hlp.c(276),WARNING" ID="0xde1408a3" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][LCID init] LCID = 0x%04x @gle_tm_hlp.c(288),INFO" ID="0xde140905" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[GLE TM][LCID init] LCID has been inited @gle_tm_hlp.c(298),INFO" ID="0xde140955" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="[GLE TM][LCID done] LCID = 0x%04x @gle_tm_hlp.c(329),INFO" ID="0xde140a4d" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="gle send controller data cfm error, result: %d @gle_tm_hlp.c(350),ERROR" ID="0xde140af2" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="gle send controller data cfm error, return param is NULL @gle_tm_hlp.c(356),ERROR" ID="0xde140b22" />
+			<MSG STRUCTURE="diag_log_msg2" NAME="gle send controller data cfm, co_handle: 0x%04x, data_index: 0x%04x. @gle_tm_hlp.c(362),INFO" ID="0xde140b55" />
+			</MSG_LOG>

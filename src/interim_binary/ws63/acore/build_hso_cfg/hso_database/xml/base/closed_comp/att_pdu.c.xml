@@ -1,0 +1,13 @@
+<MSG_LOG><MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att range free malloc stop service par failed @att_pdu.c(237),ERROR" ID="0xdc50076a" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att item write memcpy error @att_pdu.c(569),ERROR" ID="0xdc5011ca" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att item modify value core memcpy error @att_pdu.c(822),ERROR" ID="0xdc5019b2" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="att read multiple rsp memcpy error @att_pdu.c(945),ERROR" ID="0xdc501d8a" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]attc pendind response multi memcpy error @att_pdu.c(1184),ERROR" ID="0xdc502502" />
+			<MSG STRUCTURE="diag_log_msg2" NAME="mtu_cfm, mtu = %d , le_max = %d @att_pdu.c(1311),WARNING" ID="0xdc5028fb" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att read rsp memcpy error @att_pdu.c(1592),ERROR" ID="0xdc5031c2" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att general write req memcpy error @att_pdu.c(1814),ERROR" ID="0xdc5038b2" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="att prepare write pdu memcpy error @att_pdu.c(1891),ERROR" ID="0xdc503b1a" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att prepare write ind memcpy error @att_pdu.c(1949),ERROR" ID="0xdc503cea" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att handle range rsp memcpy error @att_pdu.c(2204),ERROR" ID="0xdc5044e2" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[ATT]att handle range rsp memcpy error @att_pdu.c(2213),ERROR" ID="0xdc50452a" />
+			</MSG_LOG>

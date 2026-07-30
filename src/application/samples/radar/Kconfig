@@ -1,0 +1,31 @@
+#===============================================================================
+# @brief    Kconfig file.
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2023-2023. All rights reserved.
+#===============================================================================
+
+config SUPPORT_RADAR_STA_SAMPLE
+    bool "Support RADAR STA Sample"
+
+config SUPPORT_RADAR_SOFTAP_SAMPLE
+    bool "Support RADAR SoftAP Sample."
+
+if SUPPORT_RADAR_SOFTAP_SAMPLE
+osource "application/samples/radar/softap_sample/Kconfig"
+endif
+
+config SUPPORT_RADAR_WIRELESS_SAMPLE
+    bool "Support RADAR WIRELESS Sample"
+
+if SUPPORT_RADAR_WIRELESS_SAMPLE
+osource "application/samples/radar/wireless_sample/Kconfig"
+endif
+
+config SUPPORT_RADAR_SLP_SAMPLE
+    bool "Support RADAR SLP Sample"
+
+config SUPPORT_RADAR_SLP_WIRELESS_SAMPLE
+    bool "Support RADAR SLP WIRELESS Sample"
+
+if SUPPORT_RADAR_SLP_WIRELESS_SAMPLE
+osource "application/samples/radar/slp_wireless_sample/Kconfig"
+endif

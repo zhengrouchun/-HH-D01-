@@ -1,0 +1,2 @@
+<MSG_LOG><MSG STRUCTURE="diag_log_msg3" NAME="[bgtp][ES warning]evt_sched_get_offset Fail! task_id=0x%x interval=%d duration_slot_min=%d @evt_sched.c(207),WARNING" ID="0x8870067b" />
+			</MSG_LOG>

@@ -1,0 +1,47 @@
+#===============================================================================
+# @brief    Kconfig file.
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+#===============================================================================
+
+menu "STA Sample Configuration"
+
+config WIFI_SSID
+    string "Set WIFI SSID"
+    default "my_softAP"
+    help
+        Configure the target WiFi SSID for STA connection.
+
+config WIFI_PWD
+    string "Set WIFI password"
+    default "my_password"
+    help
+        Configure the WiFi password (pre-shared key) for STA connection.
+
+config SAMPLE_SUPPORT_MQTT
+    bool
+    prompt "Support WIFI MQTT Sample"
+    depends on SAMPLE_SUPPORT_STA_SAMPLE
+    default n
+    help
+        This option means support MQTT sample depends on sta sample.
+
+if SAMPLE_SUPPORT_MQTT
+
+    menu "MQTT Sample Configuration"
+
+    config MQTT_USERNAME
+        string "Set MQTT username"
+        default "admin"
+        help
+            Configure the MQTT username for authentication.
+
+    config MQTT_PASSWORD
+        string "Set MQTT password"
+        default "admin"
+        help
+            Configure the MQTT password for authentication.
+
+    endmenu
+endif
+
+endmenu

@@ -1,0 +1,56 @@
+#===============================================================================
+# @brief    Kconfig file.
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2022-2022. All rights reserved.
+#===============================================================================
+mainmenu "Configuration"
+comment "Main menu description, show how to use this configuration system."
+
+menu "Targets"
+    comment "Select the target."
+endmenu
+
+menu "Application"
+    comment "Config the application."
+    osource "application/Kconfig"
+endmenu
+
+menu "Bootloader"
+    comment "Config the bootloader."
+    osource "bootloader/Kconfig"
+endmenu
+
+menu "Drivers"
+    comment "Config the drivers."
+    osource "drivers/Kconfig"
+endmenu
+
+menu "Kernel"
+    comment "Config the kernel."
+    osource "kernel/Kconfig"
+endmenu
+
+menu "Middleware"
+    comment "Config the middleware."
+    osource "middleware/Kconfig"
+endmenu
+
+menu "Protocol"
+    comment "Config the protocol."
+    osource "protocol/Kconfig"
+endmenu
+
+menu "Test"
+    comment "Config the test."
+    osource "test/Kconfig"
+endmenu
+
+menu "Open Source"
+    comment "Config the open source components."
+    osource "open_source/Kconfig"
+endmenu
+
+menu "Project Components"
+    comment "Out-of-tree components added by `fbb add` ($FBB_COMPONENTS_KCONFIG = components dir)."
+    osource "$(FBB_COMPONENTS_KCONFIG)/Kconfig"
+endmenu
+

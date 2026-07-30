@@ -1,0 +1,20 @@
+#===============================================================================
+# @brief    Kconfig file.
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2026-2026. All rights reserved.
+#===============================================================================
+
+menu "ALILINK Sample Configuration"
+
+config WIFI_SSID
+    string "Set WIFI SSID"
+    default "my_softAP"
+    help
+        Configure the target WiFi SSID for ALILINK STA connection.
+
+config WIFI_PWD
+    string "Set WIFI password"
+    default "my_password"
+    help
+        Configure the WiFi password (pre-shared key) for ALILINK STA connection.
+
+endmenu

@@ -1,0 +1,17 @@
+<MSG_LOG><MSG STRUCTURE="diag_log_msg0" NAME="btsrv connect state change cbk arg NULL! @connection_manager_ble.c(92),ERROR" ID="0xd89602e2" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="connect state change cannot find conn node by handle: 0x%04x. @connection_manager_ble.c(113),ERROR" ID="0xd896038a" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="ble smp paired keys cbk param error @connection_manager_ble.c(128),ERROR" ID="0xd8960402" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="paired keys malloc fail. @connection_manager_ble.c(134),ERROR" ID="0xd8960432" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="paired keys malloc fail. @connection_manager_ble.c(139),ERROR" ID="0xd896045a" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="pair keys notify send bt_service fail ret %d @connection_manager_ble.c(149),ERROR" ID="0xd89604aa" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="ble smp paired keys cbk param error @connection_manager_ble.c(160),ERROR" ID="0xd8960502" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="connect param update incomes arg is NULL! @connection_manager_ble.c(174),ERROR" ID="0xd8960572" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="connect param update, conn_node not found. @connection_manager_ble.c(181),ERROR" ID="0xd89605aa" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="connect param update,connect_params NULL. @connection_manager_ble.c(187),ERROR" ID="0xd89605da" />
+			<MSG STRUCTURE="diag_log_msg1" NAME="connect param update done ret:%d. @connection_manager_ble.c(198),WARNING" ID="0xd8960633" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="gap ble connect remote device param id null @connection_manager_ble.c(210),ERROR" ID="0xd8960692" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="[btsrv]conn node find fail. @connection_manager_ble.c(237),ERROR" ID="0xd896076a" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="read remote device rssi, conn_node not found. @connection_manager_ble.c(253),ERROR" ID="0xd89607ea" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="read remote device rssi fail @connection_manager_ble.c(260),ERROR" ID="0xd8960822" />
+			<MSG STRUCTURE="diag_log_msg0" NAME="create connection cancel fail @connection_manager_ble.c(271),ERROR" ID="0xd896087a" />
+			</MSG_LOG>
