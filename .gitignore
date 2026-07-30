@@ -1,7 +1,29 @@
-.vscode
-src/output
-src/analyzerJson
-src/interim_binary
-src/build.log
-__pycache__
+# VS Code配置
+.vscode/
+
+# HiSpark Studio工程文件
 *.hiproj
+
+# 编译输出
+src/output/
+output/
+build/
+
+# 中间文件
+src/analyzerJson/
+src/interim_binary/
+
+# 日志
+*.log
+
+# Python缓存
+__pycache__/
+
+# 压缩包
+downloads/*.zip
+
+# 编译生成文件
+*.bin
+*.elf
+*.o
+*.map
