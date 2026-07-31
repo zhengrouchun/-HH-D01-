@@ -9,7 +9,6 @@ void clearchain_feedback_init(void)
 {
     clearchain_led_init();
     clearchain_buzzer_init();
-    clearchain_buzzer_beep(300);
     clearchain_feedback_standby();
 }
 
@@ -21,6 +20,7 @@ void clearchain_feedback_standby(void)
 void clearchain_feedback_tag_read(void)
 {
     clearchain_led_all_off();
+    clearchain_buzzer_beep(80);
     clearchain_led_blink(CLEARCHAIN_LED_GREEN, 1, 180, 80);
     clearchain_feedback_standby();
 }
