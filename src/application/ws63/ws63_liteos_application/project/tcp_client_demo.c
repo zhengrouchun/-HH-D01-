@@ -9,6 +9,8 @@ Licensed under the Apache License, Version 2.0
 #include "soc_osal.h"
 #include "app_init.h"
 #include "osal_debug.h"
+#include "gpio.h"
+#include "pinctrl.h"
 
 
 #include "my_wifi_api.h"
@@ -26,6 +28,26 @@ Licensed under the Apache License, Version 2.0
 
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
 
+#define GPIO7_LED_TEST_PIN 7
+#define GPIO7_LED_TEST_MODE 0
+
+static void gpio7_led_startup_test(void)
+{
+    osal_printk("GPIO7 LED TEST start\r\n");
+
+    uapi_pin_set_mode(GPIO7_LED_TEST_PIN, GPIO7_LED_TEST_MODE);
+    uapi_gpio_set_dir(GPIO7_LED_TEST_PIN, GPIO_DIRECTION_OUTPUT);
+
+    for (unsigned int i = 0; i < 6; i++) {
+        uapi_gpio_set_val(GPIO7_LED_TEST_PIN, GPIO_LEVEL_LOW);
+        osal_msleep(300);
+        uapi_gpio_set_val(GPIO7_LED_TEST_PIN, GPIO_LEVEL_HIGH);
+        osal_msleep(300);
+    }
+
+    uapi_gpio_set_val(GPIO7_LED_TEST_PIN, GPIO_LEVEL_LOW);
+    osal_printk("GPIO7 LED TEST keep on\r\n");
+}
 
 
 
@@ -37,6 +59,8 @@ void wifi_tcp_client_demo(void *param)
     osal_printk(
         "\r\n===== TcpClientDemoTask start =====\r\n"
     );
+
+    gpio7_led_startup_test();
 
 
 

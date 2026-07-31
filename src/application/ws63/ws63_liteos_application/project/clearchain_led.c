@@ -9,8 +9,8 @@
 #define LED_YELLOW_PIN    S_MGPIO7
 #define LED_GPIO_MODE     PIN_MODE_0
 
-#define LED_ACTIVE_LEVEL  GPIO_LEVEL_HIGH
-#define LED_IDLE_LEVEL    GPIO_LEVEL_LOW
+#define LED_ACTIVE_LEVEL  GPIO_LEVEL_LOW
+#define LED_IDLE_LEVEL    GPIO_LEVEL_HIGH
 
 static pin_t clearchain_led_pin(clearchain_led_t led)
 {
