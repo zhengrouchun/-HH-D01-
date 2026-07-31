@@ -40,9 +40,12 @@ void wifi_tcp_client_demo(void *param)
 
 
 
+
     /*
      * 连接WiFi
      */
+
+    clearchain_feedback_init();
 
     osal_printk(
         "Start wifi connect...\r\n"

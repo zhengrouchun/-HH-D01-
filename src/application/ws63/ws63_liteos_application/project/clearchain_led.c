@@ -6,7 +6,7 @@
 
 #define LED_RED_PIN       S_MGPIO3
 #define LED_GREEN_PIN     S_MGPIO2
-#define LED_YELLOW_PIN    S_MGPIO0
+#define LED_YELLOW_PIN    S_MGPIO7
 #define LED_GPIO_MODE     PIN_MODE_0
 
 #define LED_ACTIVE_LEVEL  GPIO_LEVEL_HIGH

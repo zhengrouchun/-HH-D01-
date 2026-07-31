@@ -5,11 +5,22 @@
 #include "clearchain_buzzer.h"
 #include "clearchain_led.h"
 
+static int g_feedback_ready = 0;
+
 void clearchain_feedback_init(void)
 {
+    if (g_feedback_ready) {
+        return;
+    }
+
     clearchain_led_init();
     clearchain_buzzer_init();
+    clearchain_led_blink(CLEARCHAIN_LED_RED, 1, 120, 80);
+    clearchain_led_blink(CLEARCHAIN_LED_GREEN, 1, 120, 80);
+    clearchain_led_blink(CLEARCHAIN_LED_YELLOW, 1, 120, 80);
     clearchain_feedback_standby();
+
+    g_feedback_ready = 1;
 }
 
 void clearchain_feedback_standby(void)
