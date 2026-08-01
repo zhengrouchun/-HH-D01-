@@ -4,7 +4,7 @@
 #include "pinctrl.h"
 #include "soc_osal.h"
 
-#define LED_RED_PIN       S_MGPIO1
+#define LED_RED_PIN       S_MGPIO8
 #define LED_GREEN_PIN     S_MGPIO2
 #define LED_YELLOW_PIN    S_MGPIO7
 #define LED_GPIO_MODE     PIN_MODE_0

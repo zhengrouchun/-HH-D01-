@@ -1,24 +1,27 @@
 #ifndef CLEARCHAIN_HTTP_H
 #define CLEARCHAIN_HTTP_H
 
+#define CLEARCHAIN_HTTP_HOST "shun-sternness-ranting.ngrok-free.dev"
+#define CLEARCHAIN_HTTP_PORT 80
+#define CLEARCHAIN_HTTP_PATH "/scan"
 
-/**
- * @brief
- * 发送 RFID 扫描数据到后端 /scan 接口
+#define CARD_A_EPC "000000000000000000078843"
+#define CARD_B_EPC "000000000000000000078842"
+#define CARD_C_EPC "E28011704000021D35AFADD9"
+
+/*
+ * Send RFID scan data to the ClearChain /scan API.
  *
- * @param chip_uid
- * RFID标签 EPC 唯一编号
+ * Smart-mode JSON:
+ * {
+ *   "chip_uid":"E28011704000021D35AFADD9",
+ *   "scanner_id":"scanner_checkpoint",
+ *   "scan_type":1,
+ *   "stage_code":"PUB-c72m"
+ * }
  *
- * 示例:
- * E28011704000021D35AFADD9
- *
- * @return
- * 0   成功
- * -1  失败
+ * Return 0 on success, -1 on failure.
  */
-int clearchain_send_scan(
-    const char *chip_uid
-);
-
+int clearchain_send_scan(const char *chip_uid);
 
 #endif
