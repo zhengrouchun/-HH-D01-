@@ -75,8 +75,8 @@ int clearchain_send_scan(const char *chip_uid)
     );
 
     /*
-     * WS63 sends plain HTTP over raw TCP. The ngrok HTTPS URL provides the
-     * host name; this request uses that host with HTTP port 80.
+     * WS63 sends plain HTTP over raw TCP. The ngrok URL provides the host
+     * name; this request uses that host with HTTP port 80.
      */
     snprintf(
         http_request,
