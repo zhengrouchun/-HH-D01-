@@ -17,6 +17,7 @@ Licensed under the Apache License, Version 2.0
 #include "clearchain_config.h"
 #include "clearchain_feedback.h"
 #include "clearchain_http.h"
+#include "clearchain_tca9555.h"
 
 #include "r200_reader.h"
 
@@ -38,6 +39,7 @@ void wifi_tcp_client_demo(void *param)
         "\r\n===== TcpClientDemoTask start =====\r\n"
     );
 
+    (void)clearchain_tca9555_probe();
 
 
 

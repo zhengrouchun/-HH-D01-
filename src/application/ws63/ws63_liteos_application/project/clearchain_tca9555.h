@@ -11,6 +11,7 @@
 #define CLEARCHAIN_TCA9555_LEVEL_HIGH 1
 
 errcode_t clearchain_tca9555_init(void);
+errcode_t clearchain_tca9555_probe(void);
 errcode_t clearchain_tca9555_write_pin(uint8_t port, uint8_t pin, uint8_t level);
 errcode_t clearchain_tca9555_read_pin(uint8_t port, uint8_t pin, uint8_t *level);
 

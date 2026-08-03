@@ -102,6 +102,35 @@ errcode_t clearchain_tca9555_init(void)
     return ERRCODE_SUCC;
 }
 
+errcode_t clearchain_tca9555_probe(void)
+{
+    uint8_t input0 = 0;
+    uint8_t input1 = 0;
+    errcode_t ret = clearchain_tca9555_init();
+
+    if (ret != ERRCODE_SUCC) {
+        osal_printk("TCA9555 probe failed: init ret=0x%x, addr=0x%x, bus=%d, scl=%d, sda=%d\r\n",
+                    ret, TCA9555_I2C_ADDR, TCA9555_I2C_BUS, TCA9555_SCL_PIN, TCA9555_SDA_PIN);
+        return ret;
+    }
+
+    ret = tca9555_read_reg(TCA9555_REG_INPUT0, &input0);
+    if (ret != ERRCODE_SUCC) {
+        osal_printk("TCA9555 probe failed: read input0 ret=0x%x, addr=0x%x\r\n", ret, TCA9555_I2C_ADDR);
+        return ret;
+    }
+
+    ret = tca9555_read_reg(TCA9555_REG_INPUT1, &input1);
+    if (ret != ERRCODE_SUCC) {
+        osal_printk("TCA9555 probe failed: read input1 ret=0x%x, addr=0x%x\r\n", ret, TCA9555_I2C_ADDR);
+        return ret;
+    }
+
+    osal_printk("TCA9555 probe ok: addr=0x%x, bus=%d, scl=%d, sda=%d, input0=0x%02x, input1=0x%02x\r\n",
+                TCA9555_I2C_ADDR, TCA9555_I2C_BUS, TCA9555_SCL_PIN, TCA9555_SDA_PIN, input0, input1);
+    return ERRCODE_SUCC;
+}
+
 errcode_t clearchain_tca9555_write_pin(uint8_t port, uint8_t pin, uint8_t level)
 {
     uint8_t reg;
