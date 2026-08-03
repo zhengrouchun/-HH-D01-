@@ -9,6 +9,58 @@
 #include "clearchain_config.h"
 #include "clearchain_http.h"
 
+static int clearchain_recv_http_response(int fd)
+{
+    char recv_buf[512];
+    char response[1024];
+    int response_len = 0;
+    int status_code = -1;
+
+    memset(response, 0, sizeof(response));
+
+    while (1) {
+        int ret = recv(fd, recv_buf, sizeof(recv_buf) - 1, 0);
+        if (ret > 0) {
+            int copy_len;
+
+            recv_buf[ret] = '\0';
+            printf("HTTP recv chunk (%d bytes):\r\n%s\r\n", ret, recv_buf);
+
+            if (status_code < 0 &&
+                sscanf(recv_buf, "HTTP/%*d.%*d %d", &status_code) == 1) {
+                printf("HTTP status code: %d\r\n", status_code);
+            }
+
+            copy_len = ret;
+            if (response_len + copy_len >= (int)sizeof(response) - 1) {
+                copy_len = (int)sizeof(response) - 1 - response_len;
+            }
+
+            if (copy_len > 0) {
+                memcpy(&response[response_len], recv_buf, copy_len);
+                response_len += copy_len;
+                response[response_len] = '\0';
+            }
+        } else if (ret == 0) {
+            break;
+        } else {
+            printf("HTTP recv failed\r\n");
+            break;
+        }
+    }
+
+    if (status_code >= 200 && status_code < 300) {
+        return 0;
+    }
+
+    if (status_code < 0 && response_len > 0) {
+        sscanf(response, "HTTP/%*d.%*d %d", &status_code);
+    }
+
+    printf("HTTP response not successful:\r\n%s\r\n", response_len > 0 ? response : "(empty)");
+    return -1;
+}
+
 static int clearchain_connect_http_server(void)
 {
     int fd;
@@ -42,6 +94,13 @@ static int clearchain_connect_http_server(void)
         printf("HTTP connect failed: %s:%d\r\n", CLEARCHAIN_HTTP_HOST, CLEARCHAIN_HTTP_PORT);
         TCP_CloseClient(fd);
         return -1;
+    }
+
+    {
+        struct timeval timeout = {5, 0};
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+            printf("HTTP set recv timeout failed\r\n");
+        }
     }
 
     printf("HTTP connect success: %s:%d\r\n", CLEARCHAIN_HTTP_HOST, CLEARCHAIN_HTTP_PORT);
@@ -107,6 +166,14 @@ int clearchain_send_scan(const char *chip_uid)
     }
 
     printf("POST sent:\r\n%s\r\n", http_request);
+
+    if (clearchain_recv_http_response(fd) != 0) {
+        printf("HTTP request failed\r\n");
+        TCP_CloseClient(fd);
+        return -1;
+    }
+
+    printf("HTTP request success\r\n");
     TCP_CloseClient(fd);
 
     return 0;
