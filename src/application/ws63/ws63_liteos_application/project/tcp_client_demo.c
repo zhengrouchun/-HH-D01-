@@ -18,6 +18,7 @@ Licensed under the Apache License, Version 2.0
 #include "clearchain_feedback.h"
 #include "clearchain_http.h"
 #include "clearchain_tca9555.h"
+#include "clearchain_key.h"
 
 #include "r200_reader.h"
 
@@ -48,6 +49,8 @@ void wifi_tcp_client_demo(void *param)
             osal_msleep(1000);
         }
     }
+
+    clearchain_key_start();
 
 
 
@@ -234,6 +237,7 @@ void wifi_tcp_client_demo(void *param)
 
 
         }
+
         else
         {
 
