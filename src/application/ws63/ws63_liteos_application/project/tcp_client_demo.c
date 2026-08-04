@@ -32,6 +32,8 @@ Licensed under the Apache License, Version 2.0
 
 void wifi_tcp_client_demo(void *param)
 {
+    errcode_t tca9555_ret;
+
     param = param;
 
 
@@ -39,7 +41,13 @@ void wifi_tcp_client_demo(void *param)
         "\r\n===== TcpClientDemoTask start =====\r\n"
     );
 
-    (void)clearchain_tca9555_probe();
+    tca9555_ret = clearchain_tca9555_probe();
+    if (tca9555_ret != ERRCODE_SUCC) {
+        osal_printk("Stop here: GPIO12/GPIO14 hardware I2C test failed, ret=0x%x\r\n", tca9555_ret);
+        while (1) {
+            osal_msleep(1000);
+        }
+    }
 
 
 
