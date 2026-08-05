@@ -9,6 +9,13 @@
 #define CARD_B_EPC "000000000000000000078842"
 #define CARD_C_EPC "E28011704000021D35AFADD9"
 
+typedef enum {
+    CLEARCHAIN_SCAN_LED_GREEN = 0,
+    CLEARCHAIN_SCAN_LED_ORANGE = 1,
+    CLEARCHAIN_SCAN_LED_RED = 2,
+    CLEARCHAIN_SCAN_LED_UNKNOWN = 3
+} clearchain_scan_led_t;
+
 /*
  * Send RFID scan data to the ClearChain /scan API.
  *
@@ -20,7 +27,7 @@
  *   "stage_code":"PUB-c72m"
  * }
  *
- * Return 0 on success, -1 on failure.
+ * Return CLEARCHAIN_SCAN_LED_* on success, -1 on failure.
  */
 int clearchain_send_scan(const char *chip_uid);
 

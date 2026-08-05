@@ -50,12 +50,25 @@ static int clearchain_recv_http_response(int fd)
         }
     }
 
-    if (status_code >= 200 && status_code < 300) {
-        return 0;
-    }
-
     if (status_code < 0 && response_len > 0) {
         sscanf(response, "HTTP/%*d.%*d %d", &status_code);
+    }
+
+    if (status_code >= 200 && status_code < 300) {
+        if (strstr(response, "GREEN") != NULL || strstr(response, "APPROVED") != NULL) {
+            return CLEARCHAIN_SCAN_LED_GREEN;
+        }
+
+        if (strstr(response, "ORANGE") != NULL || strstr(response, "VERIFY") != NULL) {
+            return CLEARCHAIN_SCAN_LED_ORANGE;
+        }
+
+        if (strstr(response, "RED") != NULL || strstr(response, "INSPECTION") != NULL) {
+            return CLEARCHAIN_SCAN_LED_RED;
+        }
+
+        printf("HTTP response LED state not found, default GREEN\r\n");
+        return CLEARCHAIN_SCAN_LED_GREEN;
     }
 
     printf("HTTP response not successful:\r\n%s\r\n", response_len > 0 ? response : "(empty)");
@@ -114,6 +127,7 @@ int clearchain_send_scan(const char *chip_uid)
     char http_request[640];
     const clearchain_stage_config_t *stage_config;
     int fd;
+    int scan_led;
 
     if (chip_uid == NULL || chip_uid[0] == '\0') {
         printf("HTTP chip_uid empty\r\n");
@@ -177,14 +191,15 @@ int clearchain_send_scan(const char *chip_uid)
 
     printf("POST sent:\r\n%s\r\n", http_request);
 
-    if (clearchain_recv_http_response(fd) != 0) {
+    scan_led = clearchain_recv_http_response(fd);
+    if (scan_led < 0) {
         printf("HTTP request failed\r\n");
         TCP_CloseClient(fd);
         return -1;
     }
 
-    printf("HTTP request success\r\n");
+    printf("HTTP request success, scan LED=%d\r\n", scan_led);
     TCP_CloseClient(fd);
 
-    return 0;
+    return scan_led;
 }

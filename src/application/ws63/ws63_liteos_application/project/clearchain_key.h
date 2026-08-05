@@ -10,7 +10,7 @@ typedef struct {
     const char *stage_code;
 } clearchain_stage_config_t;
 
-/* Starts the polling task for the single stage-selection button. */
+/* Starts the polling task for five stage-selection buttons on TCA9555 P10-P14. */
 void clearchain_key_start(void);
 
 uint8_t clearchain_key_get_stage(void);

@@ -7,5 +7,6 @@ void clearchain_feedback_tag_read(void);
 void clearchain_feedback_post_success(void);
 void clearchain_feedback_post_failed(void);
 void clearchain_feedback_risk_alert(void);
+void clearchain_feedback_verify(void);
 
 #endif

@@ -199,17 +199,25 @@ void wifi_tcp_client_demo(void *param)
                  *
                  */
 
-                if(clearchain_send_scan(chip_uid) == 0)
                 {
+                    int scan_led = clearchain_send_scan(chip_uid);
 
-                    clearchain_feedback_post_success();
-
-                }
-                else
-                {
-
-                    clearchain_feedback_post_failed();
-
+                    if(scan_led == CLEARCHAIN_SCAN_LED_GREEN)
+                    {
+                        clearchain_feedback_post_success();
+                    }
+                    else if(scan_led == CLEARCHAIN_SCAN_LED_ORANGE)
+                    {
+                        clearchain_feedback_verify();
+                    }
+                    else if(scan_led == CLEARCHAIN_SCAN_LED_RED)
+                    {
+                        clearchain_feedback_risk_alert();
+                    }
+                    else
+                    {
+                        clearchain_feedback_post_failed();
+                    }
                 }
 
 

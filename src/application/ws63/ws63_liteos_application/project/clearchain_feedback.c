@@ -51,6 +51,15 @@ void clearchain_feedback_post_failed(void)
     clearchain_feedback_standby();
 }
 
+void clearchain_feedback_verify(void)
+{
+    clearchain_led_all_off();
+    clearchain_led_on(CLEARCHAIN_LED_YELLOW);
+    clearchain_buzzer_beep(160);
+    osal_msleep(1000);
+    clearchain_feedback_standby();
+}
+
 void clearchain_feedback_risk_alert(void)
 {
     clearchain_led_all_off();
