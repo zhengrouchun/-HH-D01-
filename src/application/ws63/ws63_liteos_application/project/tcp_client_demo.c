@@ -44,7 +44,7 @@ void wifi_tcp_client_demo(void *param)
 
     tca9555_ret = clearchain_tca9555_probe();
     if (tca9555_ret != ERRCODE_SUCC) {
-        osal_printk("Stop here: GPIO12/GPIO14 hardware I2C test failed, ret=0x%x\r\n", tca9555_ret);
+        osal_printk("Stop here: GPIO13/GPIO14 software I2C test failed, ret=0x%x\r\n", tca9555_ret);
         while (1) {
             osal_msleep(1000);
         }

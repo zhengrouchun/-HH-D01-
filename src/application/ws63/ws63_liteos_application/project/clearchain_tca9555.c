@@ -1,17 +1,16 @@
 #include "clearchain_tca9555.h"
 
-#include "i2c.h"
+#include "gpio.h"
 #include "pinctrl.h"
 #include "soc_osal.h"
+#include "tcxo.h"
 
-#define TCA9555_I2C_BUS          I2C_BUS_1
 #define TCA9555_I2C_ADDR         0x20
-#define TCA9555_I2C_BAUDRATE     100000
-#define TCA9555_I2C_HSCODE       0
 
-#define TCA9555_SCL_PIN          S_MGPIO12
+#define TCA9555_SCL_PIN          S_MGPIO13
 #define TCA9555_SDA_PIN          S_MGPIO14
-#define TCA9555_PIN_MODE         PIN_MODE_2
+#define TCA9555_PIN_MODE         PIN_MODE_0
+#define TCA9555_I2C_DELAY_US     5
 
 #define TCA9555_REG_INPUT0       0x00
 #define TCA9555_REG_INPUT1       0x01
@@ -27,27 +26,153 @@
 static uint8_t g_output_latch[2] = { 0xFF, 0xFF };
 static int g_tca9555_ready = 0;
 
+static void tca9555_delay(void)
+{
+    uapi_tcxo_delay_us(TCA9555_I2C_DELAY_US);
+}
+
+static void tca9555_gpio_release(pin_t pin)
+{
+    (void)uapi_gpio_set_dir(pin, GPIO_DIRECTION_INPUT);
+}
+
+static void tca9555_gpio_low(pin_t pin)
+{
+    (void)uapi_gpio_set_val(pin, GPIO_LEVEL_LOW);
+    (void)uapi_gpio_set_dir(pin, GPIO_DIRECTION_OUTPUT);
+}
+
+static uint8_t tca9555_sda_read(void)
+{
+    return (uapi_gpio_get_val(TCA9555_SDA_PIN) == GPIO_LEVEL_HIGH) ? 1 : 0;
+}
+
+static void tca9555_scl_high(void)
+{
+    tca9555_gpio_release(TCA9555_SCL_PIN);
+    tca9555_delay();
+}
+
+static void tca9555_scl_low(void)
+{
+    tca9555_gpio_low(TCA9555_SCL_PIN);
+    tca9555_delay();
+}
+
+static void tca9555_sda_high(void)
+{
+    tca9555_gpio_release(TCA9555_SDA_PIN);
+    tca9555_delay();
+}
+
+static void tca9555_sda_low(void)
+{
+    tca9555_gpio_low(TCA9555_SDA_PIN);
+    tca9555_delay();
+}
+
+static void tca9555_i2c_start(void)
+{
+    tca9555_sda_high();
+    tca9555_scl_high();
+    tca9555_sda_low();
+    tca9555_scl_low();
+}
+
+static void tca9555_i2c_stop(void)
+{
+    tca9555_sda_low();
+    tca9555_scl_high();
+    tca9555_sda_high();
+}
+
+static uint8_t tca9555_i2c_write_byte(uint8_t value)
+{
+    for (uint8_t mask = 0x80; mask != 0; mask >>= 1) {
+        if ((value & mask) != 0) {
+            tca9555_sda_high();
+        } else {
+            tca9555_sda_low();
+        }
+        tca9555_scl_high();
+        tca9555_scl_low();
+    }
+
+    tca9555_sda_high();
+    tca9555_scl_high();
+    uint8_t ack = (uint8_t)(tca9555_sda_read() == 0);
+    tca9555_scl_low();
+    return ack;
+}
+
+static uint8_t tca9555_i2c_read_byte(uint8_t ack)
+{
+    uint8_t value = 0;
+
+    tca9555_sda_high();
+    for (uint8_t i = 0; i < 8; i++) {
+        value <<= 1;
+        tca9555_scl_high();
+        if (tca9555_sda_read()) {
+            value |= 1;
+        }
+        tca9555_scl_low();
+    }
+
+    if (ack) {
+        tca9555_sda_low();
+    } else {
+        tca9555_sda_high();
+    }
+    tca9555_scl_high();
+    tca9555_scl_low();
+    tca9555_sda_high();
+
+    return value;
+}
+
 static errcode_t tca9555_write_reg(uint8_t reg, uint8_t value)
 {
-    uint8_t tx_buf[2] = { reg, value };
-    i2c_data_t data = {
-        .send_buf = tx_buf,
-        .send_len = sizeof(tx_buf),
-    };
+    tca9555_i2c_start();
+    if (!tca9555_i2c_write_byte((uint8_t)(TCA9555_I2C_ADDR << 1))) {
+        tca9555_i2c_stop();
+        return ERRCODE_I2C_ACK_ERR;
+    }
+    if (!tca9555_i2c_write_byte(reg)) {
+        tca9555_i2c_stop();
+        return ERRCODE_I2C_ACK_ERR;
+    }
+    if (!tca9555_i2c_write_byte(value)) {
+        tca9555_i2c_stop();
+        return ERRCODE_I2C_ACK_ERR;
+    }
+    tca9555_i2c_stop();
 
-    return uapi_i2c_master_write(TCA9555_I2C_BUS, TCA9555_I2C_ADDR, &data);
+    return ERRCODE_SUCC;
 }
 
 static errcode_t tca9555_read_reg(uint8_t reg, uint8_t *value)
 {
-    i2c_data_t data = {
-        .send_buf = &reg,
-        .send_len = 1,
-        .receive_buf = value,
-        .receive_len = 1,
-    };
+    tca9555_i2c_start();
+    if (!tca9555_i2c_write_byte((uint8_t)(TCA9555_I2C_ADDR << 1))) {
+        tca9555_i2c_stop();
+        return ERRCODE_I2C_ACK_ERR;
+    }
+    if (!tca9555_i2c_write_byte(reg)) {
+        tca9555_i2c_stop();
+        return ERRCODE_I2C_ACK_ERR;
+    }
 
-    return uapi_i2c_master_writeread(TCA9555_I2C_BUS, TCA9555_I2C_ADDR, &data);
+    tca9555_i2c_start();
+    if (!tca9555_i2c_write_byte((uint8_t)((TCA9555_I2C_ADDR << 1) | 1))) {
+        tca9555_i2c_stop();
+        return ERRCODE_I2C_ACK_ERR;
+    }
+
+    *value = tca9555_i2c_read_byte(0);
+    tca9555_i2c_stop();
+
+    return ERRCODE_SUCC;
 }
 
 errcode_t clearchain_tca9555_init(void)
@@ -59,14 +184,14 @@ errcode_t clearchain_tca9555_init(void)
     }
 
     uapi_pin_init();
-    uapi_pin_set_mode(TCA9555_SCL_PIN, TCA9555_PIN_MODE);
-    uapi_pin_set_mode(TCA9555_SDA_PIN, TCA9555_PIN_MODE);
-
-    ret = uapi_i2c_master_init(TCA9555_I2C_BUS, TCA9555_I2C_BAUDRATE, TCA9555_I2C_HSCODE);
-    if (ret != ERRCODE_SUCC) {
-        osal_printk("TCA9555 i2c init failed: 0x%x\r\n", ret);
-        return ret;
-    }
+    uapi_gpio_init();
+    (void)uapi_tcxo_init();
+    (void)uapi_pin_set_mode(TCA9555_SCL_PIN, TCA9555_PIN_MODE);
+    (void)uapi_pin_set_mode(TCA9555_SDA_PIN, TCA9555_PIN_MODE);
+    tca9555_gpio_low(TCA9555_SCL_PIN);
+    tca9555_gpio_low(TCA9555_SDA_PIN);
+    tca9555_scl_high();
+    tca9555_sda_high();
 
     g_output_latch[0] = 0xFF;
     g_output_latch[1] = 0xFF;
@@ -109,8 +234,8 @@ errcode_t clearchain_tca9555_probe(void)
     errcode_t ret = clearchain_tca9555_init();
 
     if (ret != ERRCODE_SUCC) {
-        osal_printk("TCA9555 probe failed: init ret=0x%x, addr=0x%x, bus=%d, scl=%d, sda=%d\r\n",
-                    ret, TCA9555_I2C_ADDR, TCA9555_I2C_BUS, TCA9555_SCL_PIN, TCA9555_SDA_PIN);
+        osal_printk("TCA9555 probe failed: init ret=0x%x, addr=0x%x, software i2c scl=%d, sda=%d\r\n",
+                    ret, TCA9555_I2C_ADDR, TCA9555_SCL_PIN, TCA9555_SDA_PIN);
         return ret;
     }
 
@@ -126,8 +251,8 @@ errcode_t clearchain_tca9555_probe(void)
         return ret;
     }
 
-    osal_printk("TCA9555 probe ok: addr=0x%x, bus=%d, scl=%d, sda=%d, input0=0x%02x, input1=0x%02x\r\n",
-                TCA9555_I2C_ADDR, TCA9555_I2C_BUS, TCA9555_SCL_PIN, TCA9555_SDA_PIN, input0, input1);
+    osal_printk("TCA9555 probe ok: addr=0x%x, software i2c scl=%d, sda=%d, input0=0x%02x, input1=0x%02x\r\n",
+                TCA9555_I2C_ADDR, TCA9555_SCL_PIN, TCA9555_SDA_PIN, input0, input1);
     return ERRCODE_SUCC;
 }
 

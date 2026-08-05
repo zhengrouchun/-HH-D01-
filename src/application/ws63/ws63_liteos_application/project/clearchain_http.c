@@ -8,6 +8,7 @@
 #include "my_wifi_tcp.h"
 #include "clearchain_config.h"
 #include "clearchain_http.h"
+#include "clearchain_key.h"
 
 static int clearchain_recv_http_response(int fd)
 {
@@ -111,12 +112,15 @@ int clearchain_send_scan(const char *chip_uid)
 {
     char json_body[256];
     char http_request[640];
+    const clearchain_stage_config_t *stage_config;
     int fd;
 
     if (chip_uid == NULL || chip_uid[0] == '\0') {
         printf("HTTP chip_uid empty\r\n");
         return -1;
     }
+
+    stage_config = clearchain_key_get_stage_config();
 
     snprintf(
         json_body,
@@ -128,10 +132,16 @@ int clearchain_send_scan(const char *chip_uid)
         "\"stage_code\":\"%s\""
         "}",
         chip_uid,
-        SCANNER_ID,
+        stage_config->scanner_id,
         SCAN_TYPE,
-        SCAN_STAGE_CODE
+        stage_config->stage_code
     );
+
+    printf("HTTP scan stage: %u (%s), scanner_id=%s, stage_code=%s\r\n",
+           stage_config->stage,
+           stage_config->name,
+           stage_config->scanner_id,
+           stage_config->stage_code);
 
     /*
      * WS63 sends plain HTTP over raw TCP. The ngrok URL provides the host
