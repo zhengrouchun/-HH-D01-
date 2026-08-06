@@ -38,6 +38,19 @@ static uint8_t g_same_level_count[CLEARCHAIN_STAGE_COUNT] = { 0 };
 static uint8_t g_stage = 4;
 static int g_key_started = 0;
 
+static void clearchain_key_sync_initial_levels(void)
+{
+    for (uint8_t i = 0; i < CLEARCHAIN_STAGE_COUNT; i++) {
+        uint8_t level;
+
+        if (clearchain_tca9555_read_pin(CLEARCHAIN_KEY_PORT, g_key_pins[i], &level) == ERRCODE_SUCC) {
+            g_last_level[i] = level;
+            g_stable_level[i] = level;
+            g_same_level_count[i] = 0;
+        }
+    }
+}
+
 static int clearchain_key_poll(uint8_t key_index)
 {
     uint8_t level;
@@ -96,6 +109,8 @@ void clearchain_key_start(void)
     if (g_key_started) {
         return;
     }
+
+    clearchain_key_sync_initial_levels();
 
     task_handle = osal_kthread_create((osal_kthread_handler)clearchain_key_task, 0, "ClearChainKey", 0x800);
     if (task_handle == NULL) {
