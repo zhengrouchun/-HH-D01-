@@ -50,7 +50,6 @@ void wifi_tcp_client_demo(void *param)
         }
     }
 
-    clearchain_key_start();
 
 
 
@@ -105,6 +104,8 @@ void wifi_tcp_client_demo(void *param)
     osal_printk(
         "R200 init done\r\n"
     );
+
+    clearchain_key_start();
 
 
 
