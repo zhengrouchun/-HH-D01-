@@ -28,7 +28,7 @@ Licensed under the Apache License, Version 2.0
 
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
 #define TAG_MISSING_RESET_ROUNDS 10
-#define RFID_POLL_INTERVAL_MS 100
+#define RFID_POLL_INTERVAL_MS 200
 
 
 

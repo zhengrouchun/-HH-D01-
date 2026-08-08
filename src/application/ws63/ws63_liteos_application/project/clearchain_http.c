@@ -10,6 +10,50 @@
 #include "clearchain_http.h"
 #include "clearchain_key.h"
 
+static void clearchain_print_redirect_location(const char *response)
+{
+    const char *location = strstr(response, "\r\nLocation:");
+    const char *value;
+    const char *end;
+    char location_buf[256];
+    int location_len;
+
+    if (location == NULL) {
+        location = strstr(response, "\r\nlocation:");
+    }
+
+    if (location == NULL) {
+        printf("HTTP redirect Location header not found\r\n");
+        return;
+    }
+
+    value = strchr(location + 2, ':');
+    if (value == NULL) {
+        printf("HTTP redirect Location header parse failed\r\n");
+        return;
+    }
+
+    value++;
+    while (*value == ' ') {
+        value++;
+    }
+
+    end = strstr(value, "\r\n");
+    if (end == NULL) {
+        end = value + strlen(value);
+    }
+
+    location_len = (int)(end - value);
+    if (location_len >= (int)sizeof(location_buf)) {
+        location_len = (int)sizeof(location_buf) - 1;
+    }
+
+    memcpy(location_buf, value, location_len);
+    location_buf[location_len] = '\0';
+
+    printf("HTTP redirect Location: %s\r\n", location_buf);
+}
+
 static int clearchain_recv_http_response(int fd)
 {
     char recv_buf[512];
@@ -69,6 +113,12 @@ static int clearchain_recv_http_response(int fd)
 
         printf("HTTP response LED state not found, default ORANGE\r\n");
         return CLEARCHAIN_SCAN_LED_ORANGE;
+    }
+
+    if (status_code >= 300 && status_code < 400) {
+        printf("HTTP redirect received: %d\r\n", status_code);
+        clearchain_print_redirect_location(response);
+        printf("Plain HTTP request was redirected. Backend/ngrok still needs HTTP-to-HTTPS redirect disabled.\r\n");
     }
 
     printf("HTTP response not successful:\r\n%s\r\n", response_len > 0 ? response : "(empty)");
@@ -156,6 +206,10 @@ int clearchain_send_scan(const char *chip_uid)
            stage_config->name,
            stage_config->scanner_id,
            stage_config->stage_code);
+    printf("HTTP target: http://%s:%d%s\r\n",
+           CLEARCHAIN_HTTP_HOST,
+           CLEARCHAIN_HTTP_PORT,
+           CLEARCHAIN_HTTP_PATH);
 
     /*
      * WS63 sends plain HTTP over raw TCP. The ngrok URL provides the host
