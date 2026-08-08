@@ -117,6 +117,7 @@ void wifi_tcp_client_demo(void *param)
      */
 
     char last_chip_uid[R200_TAG_ID_MAX_LEN] = {0};
+    uint8_t last_scan_stage = 0;
     int missing_tag_rounds = 0;
 
 
@@ -170,16 +171,22 @@ void wifi_tcp_client_demo(void *param)
              * 判断是否为新标签
              */
 
+            {
+                const clearchain_stage_config_t *stage_config = clearchain_key_get_stage_config();
+
             if(strcmp(
                     chip_uid,
                     last_chip_uid
-                ) != 0)
+                ) != 0 ||
+                stage_config->stage != last_scan_stage)
             {
 
 
                 osal_printk(
-                    "New CHIP_UID send HTTP:%s\r\n",
-                    chip_uid
+                    "New scan send HTTP, CHIP_UID:%s, stage:%u (%s)\r\n",
+                    chip_uid,
+                    stage_config->stage,
+                    stage_config->name
                 );
 
 
@@ -240,8 +247,11 @@ void wifi_tcp_client_demo(void *param)
                     sizeof(last_chip_uid)-1
                 ] = '\0';
 
+                last_scan_stage = stage_config->stage;
 
 
+
+            }
             }
 
 
@@ -261,6 +271,7 @@ void wifi_tcp_client_demo(void *param)
                 if (missing_tag_rounds >= TAG_MISSING_RESET_ROUNDS) {
                     osal_printk("Tag missing, clear last CHIP_UID:%s\r\n", last_chip_uid);
                     last_chip_uid[0] = '\0';
+                    last_scan_stage = 0;
                     missing_tag_rounds = 0;
                 }
             }
