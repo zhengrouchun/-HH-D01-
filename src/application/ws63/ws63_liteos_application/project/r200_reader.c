@@ -5,11 +5,14 @@
 #include "osal_debug.h"
 #include "r200_protocol.h"
 #include "r200_uart.h"
+#include "soc_osal.h"
 
-#define R200_FRAME_TIMEOUT_MS 80
-#define R200_MAX_READ_MS      500
+#define R200_FRAME_TIMEOUT_MS 60
+#define R200_MAX_READ_MS      350
+#define R200_SCAN_WINDOW_MS   1800
+#define R200_SCAN_GAP_MS      120
 #define R200_DEBUG_EVERY_N    5
-#define R200_PARSE_ATTEMPTS   3
+#define R200_PARSE_ATTEMPTS   8
 
 static void r200_print_hex(const char *prefix, const uint8_t *data, size_t length)
 {
@@ -72,7 +75,13 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
             }
 
             r200_print_hex("R200 malformed frame: ", frame, length);
-            length = 0;
+
+            if (frame[length - 1] == 0xAA) {
+                frame[0] = 0xAA;
+                length = 1;
+            } else {
+                length = 0;
+            }
             payload_length = 0;
         }
     }
@@ -105,6 +114,7 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
     size_t response_length;
     static uint32_t debug_count = 0;
     int debug_this_time;
+    uint32_t elapsed = 0;
 
     if (epc == NULL || epc_size < R200_TAG_ID_MAX_LEN) {
         return -1;
@@ -115,35 +125,44 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
         return -1;
     }
 
-    debug_count++;
-    debug_this_time = (debug_count == 1 || (debug_count % R200_DEBUG_EVERY_N) == 0);
-    if (debug_this_time) {
-        r200_print_hex("R200 TX: ", command, command_length);
-    }
-
     r200_uart_flush();
 
-    if (r200_uart_write(command, command_length) != 0) {
-        osal_printk("R200 write failed\r\n");
-        return -1;
-    }
+    while (elapsed < R200_SCAN_WINDOW_MS) {
+        debug_count++;
+        debug_this_time = (debug_count == 1 || (debug_count % R200_DEBUG_EVERY_N) == 0);
+        if (debug_this_time) {
+            r200_print_hex("R200 TX: ", command, command_length);
+        }
 
-    for (int attempt = 0; attempt < R200_PARSE_ATTEMPTS; attempt++) {
-        if (r200_reader_read_frame(response, sizeof(response),
-                                   &response_length) != 0) {
+        if (r200_uart_write(command, command_length) != 0) {
+            osal_printk("R200 write failed\r\n");
             return -1;
         }
 
-        r200_print_hex("R200 RX: ", response, response_length);
+        for (int attempt = 0; attempt < R200_PARSE_ATTEMPTS; attempt++) {
+            if (r200_reader_read_frame(response, sizeof(response),
+                                       &response_length) != 0) {
+                break;
+            }
 
-        if (r200_protocol_parse_inventory(response, response_length,
-                                          epc, epc_size) == 0) {
-            osal_printk("R200 EPC: %s\r\n", epc);
-            return 0;
+            if (debug_this_time) {
+                r200_print_hex("R200 RX: ", response, response_length);
+            }
+
+            if (r200_protocol_parse_inventory(response, response_length,
+                                              epc, epc_size) == 0) {
+                osal_printk("R200 EPC: %s\r\n", epc);
+                return 0;
+            }
+
+            osal_printk("R200 parse failed, wait next frame\r\n");
         }
 
-        osal_printk("R200 parse failed, wait next frame\r\n");
+        osal_msleep(R200_SCAN_GAP_MS);
+        elapsed += R200_MAX_READ_MS + R200_SCAN_GAP_MS;
     }
+
+    osal_printk("R200 scan window timeout\r\n");
 
     return -1;
 }

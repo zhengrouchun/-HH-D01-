@@ -10,7 +10,7 @@
 #define R200_UART_RX_PIN    S_MGPIO16
 #define R200_UART_PIN_MODE  PIN_MODE_1
 #define R200_UART_BAUDRATE  115200
-#define R200_UART_RX_SIZE   128
+#define R200_UART_RX_SIZE   512
 
 static uint8_t g_r200_uart_rx_buffer[R200_UART_RX_SIZE];
 static uart_buffer_config_t g_r200_uart_buffer_config = {

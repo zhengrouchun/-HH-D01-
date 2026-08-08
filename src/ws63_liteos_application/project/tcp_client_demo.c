@@ -20,6 +20,7 @@ Licensed under the Apache License, Version 2.0
 
 #define WIFI_TCP_CLIENT_TASK_PRIO 24
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
+#define TAG_MISSING_RESET_ROUNDS 8
 
 
 void wifi_tcp_client_demo(void *param)
@@ -65,6 +66,7 @@ void wifi_tcp_client_demo(void *param)
 
 
     char last_tag_id[R200_TAG_ID_MAX_LEN] = {0};
+    int missing_tag_rounds = 0;
 
 
     while(1)
@@ -76,6 +78,7 @@ void wifi_tcp_client_demo(void *param)
         if(r200_reader_read_epc(tag_id,
                                 sizeof(tag_id)) == 0)
         {
+            missing_tag_rounds = 0;
 
             osal_printk("Read TAG:%s\r\n",
                         tag_id);
@@ -115,10 +118,19 @@ void wifi_tcp_client_demo(void *param)
         else
         {
             clearchain_feedback_standby();
+
+            if (last_tag_id[0] != '\0') {
+                missing_tag_rounds++;
+                if (missing_tag_rounds >= TAG_MISSING_RESET_ROUNDS) {
+                    osal_printk("Tag missing, clear last TAG:%s\r\n", last_tag_id);
+                    last_tag_id[0] = '\0';
+                    missing_tag_rounds = 0;
+                }
+            }
         }
 
 
-       osal_msleep(1000);
+       osal_msleep(300);
     }
 }
 

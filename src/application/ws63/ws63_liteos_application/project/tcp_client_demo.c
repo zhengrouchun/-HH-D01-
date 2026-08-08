@@ -27,7 +27,7 @@ Licensed under the Apache License, Version 2.0
 #define WIFI_TCP_CLIENT_TASK_PRIO 24
 
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
-#define TAG_MISSING_RESET_ROUNDS 3
+#define TAG_MISSING_RESET_ROUNDS 8
 
 
 
@@ -273,7 +273,7 @@ void wifi_tcp_client_demo(void *param)
          * R200扫描间隔
          */
 
-        osal_msleep(2000);
+        osal_msleep(300);
 
     }
 
