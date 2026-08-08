@@ -17,6 +17,7 @@ Licensed under the Apache License, Version 2.0
 #include "clearchain_config.h"
 #include "clearchain_feedback.h"
 #include "clearchain_http.h"
+#include "clearchain_demo_policy.h"
 #include "clearchain_tca9555.h"
 #include "clearchain_key.h"
 
@@ -201,7 +202,16 @@ void wifi_tcp_client_demo(void *param)
                  */
 
                 {
+                    const clearchain_stage_config_t *stage_config = clearchain_key_get_stage_config();
+                    int local_led = clearchain_demo_policy_apply(chip_uid, stage_config);
                     int scan_led = clearchain_send_scan(chip_uid);
+
+                    if (local_led != CLEARCHAIN_SCAN_LED_UNKNOWN) {
+                        osal_printk("Demo policy overrides backend LED: %d -> %d\r\n",
+                                    scan_led,
+                                    local_led);
+                        scan_led = local_led;
+                    }
 
                     if(scan_led == CLEARCHAIN_SCAN_LED_GREEN)
                     {
