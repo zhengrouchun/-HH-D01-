@@ -67,8 +67,8 @@ static int clearchain_recv_http_response(int fd)
             return CLEARCHAIN_SCAN_LED_RED;
         }
 
-        printf("HTTP response LED state not found, default UNKNOWN\r\n");
-        return CLEARCHAIN_SCAN_LED_UNKNOWN;
+        printf("HTTP response LED state not found, default ORANGE\r\n");
+        return CLEARCHAIN_SCAN_LED_ORANGE;
     }
 
     printf("HTTP response not successful:\r\n%s\r\n", response_len > 0 ? response : "(empty)");
