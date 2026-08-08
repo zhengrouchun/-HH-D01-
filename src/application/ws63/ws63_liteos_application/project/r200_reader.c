@@ -10,8 +10,8 @@
 #define R200_FRAME_TIMEOUT_MS 60
 #define R200_MAX_READ_MS      350
 #define R200_SCAN_WINDOW_MS   1800
-#define R200_SCAN_GAP_MS      120
-#define R200_DEBUG_EVERY_N    5
+#define R200_SCAN_GAP_MS      40
+#define R200_DEBUG_EVERY_N    20
 #define R200_PARSE_ATTEMPTS   8
 
 static void r200_print_hex(const char *prefix, const uint8_t *data, size_t length)

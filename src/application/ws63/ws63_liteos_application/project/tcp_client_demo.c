@@ -27,7 +27,8 @@ Licensed under the Apache License, Version 2.0
 #define WIFI_TCP_CLIENT_TASK_PRIO 24
 
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
-#define TAG_MISSING_RESET_ROUNDS 8
+#define TAG_MISSING_RESET_ROUNDS 10
+#define RFID_POLL_INTERVAL_MS 100
 
 
 
@@ -284,7 +285,7 @@ void wifi_tcp_client_demo(void *param)
          * R200扫描间隔
          */
 
-        osal_msleep(300);
+        osal_msleep(RFID_POLL_INTERVAL_MS);
 
     }
 
