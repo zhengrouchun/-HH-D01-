@@ -208,8 +208,10 @@ void wifi_tcp_client_demo(void *param)
                  *
                  */
 
+                int scan_led;
+
                 {
-                    int scan_led = clearchain_send_scan(chip_uid);
+                    scan_led = clearchain_send_scan(chip_uid);
 
                     if(scan_led == CLEARCHAIN_SCAN_LED_GREEN)
                     {
@@ -237,18 +239,21 @@ void wifi_tcp_client_demo(void *param)
                  * 保存当前标签
                  */
 
-                strncpy(
-                    last_chip_uid,
-                    chip_uid,
-                    sizeof(last_chip_uid)-1
-                );
+                if(scan_led >= 0)
+                {
+                    strncpy(
+                        last_chip_uid,
+                        chip_uid,
+                        sizeof(last_chip_uid)-1
+                    );
 
 
-                last_chip_uid[
-                    sizeof(last_chip_uid)-1
-                ] = '\0';
+                    last_chip_uid[
+                        sizeof(last_chip_uid)-1
+                    ] = '\0';
 
-                last_scan_stage = stage_config->stage;
+                    last_scan_stage = stage_config->stage;
+                }
 
 
 

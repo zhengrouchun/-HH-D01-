@@ -149,13 +149,16 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
                 r200_print_hex("R200 RX: ", response, response_length);
             }
 
-            if (r200_protocol_parse_inventory(response, response_length,
-                                              epc, epc_size) == 0) {
+            int parse_ret = r200_protocol_parse_inventory(response, response_length,
+                                                          epc, epc_size);
+            if (parse_ret == 0) {
                 osal_printk("R200 EPC: %s\r\n", epc);
                 return 0;
             }
 
-            osal_printk("R200 parse failed, wait next frame\r\n");
+            if (parse_ret != R200_PARSE_COMMAND_ERROR) {
+                osal_printk("R200 parse failed, wait next frame\r\n");
+            }
         }
 
         osal_msleep(R200_SCAN_GAP_MS);

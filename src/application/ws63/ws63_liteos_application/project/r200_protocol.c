@@ -248,12 +248,20 @@ int r200_protocol_parse_inventory(const uint8_t *frame,
     if(frame[1] == R200_TYPE_RESPONSE &&
        frame[2] == R200_COMMAND_ERROR)
     {
+        if(payload_length > 0)
+        {
+            osal_printk(
+            "R200 command error code: 0x%02X\r\n",
+            frame[5]);
+        }
+        else
+        {
+            osal_printk(
+            "R200 command error\r\n");
+        }
 
-        osal_printk(
-        "R200 command error\r\n");
 
-
-        return -1;
+        return R200_PARSE_COMMAND_ERROR;
     }
 
 
