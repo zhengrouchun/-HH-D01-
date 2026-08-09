@@ -6,6 +6,7 @@
 
 #define R200_MAX_FRAME_SIZE 128
 #define R200_PARSE_COMMAND_ERROR (-2)
+#define R200_PARSE_NO_TAG        (-3)
 
 int r200_protocol_build_inventory(uint8_t *frame,
                                   size_t frame_size,

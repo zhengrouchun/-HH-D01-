@@ -27,6 +27,7 @@
 // 命令
 #define R200_COMMAND_INVENTORY  0x22
 #define R200_COMMAND_ERROR      0xFF
+#define R200_ERROR_NO_TAG       0x15
 
 
 
@@ -250,6 +251,11 @@ int r200_protocol_parse_inventory(const uint8_t *frame,
     {
         if(payload_length > 0)
         {
+            if(frame[5] == R200_ERROR_NO_TAG)
+            {
+                return R200_PARSE_NO_TAG;
+            }
+
             osal_printk(
             "R200 command error code: 0x%02X\r\n",
             frame[5]);

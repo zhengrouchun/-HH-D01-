@@ -175,6 +175,7 @@ int clearchain_send_scan(const char *chip_uid)
 {
     char json_body[256];
     char http_request[640];
+    char host_header[96];
     const clearchain_stage_config_t *stage_config;
     int fd;
     int scan_led;
@@ -211,9 +212,16 @@ int clearchain_send_scan(const char *chip_uid)
            CLEARCHAIN_HTTP_PORT,
            CLEARCHAIN_HTTP_PATH);
 
+    if (CLEARCHAIN_HTTP_PORT == 80) {
+        snprintf(host_header, sizeof(host_header), "%s", CLEARCHAIN_HTTP_HOST);
+    } else {
+        snprintf(host_header, sizeof(host_header), "%s:%d",
+                 CLEARCHAIN_HTTP_HOST, CLEARCHAIN_HTTP_PORT);
+    }
+
     /*
-     * WS63 sends plain HTTP over raw TCP. The ngrok URL provides the host
-     * name; this request uses that host with HTTP port 80.
+     * WS63 sends plain HTTP over raw TCP. For ngrok TCP tunnels the public
+     * host usually uses a non-80 port, so include the port in Host too.
      */
     snprintf(
         http_request,
@@ -227,7 +235,7 @@ int clearchain_send_scan(const char *chip_uid)
         "\r\n"
         "%s",
         CLEARCHAIN_HTTP_PATH,
-        CLEARCHAIN_HTTP_HOST,
+        host_header,
         (int)strlen(json_body),
         json_body
     );

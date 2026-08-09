@@ -16,11 +16,11 @@
 // =============================
 
 // Flask服务器IP
-#define SERVER_IP "shun-sternness-ranting.ngrok-free.dev"
+#define SERVER_IP "0.tcp.jp.ngrok.io"
 
 
 // Flask端口
-#define SERVER_PORT 80
+#define SERVER_PORT 20550
 
 
 // HTTP接口

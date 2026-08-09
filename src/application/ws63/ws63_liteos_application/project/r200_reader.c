@@ -7,12 +7,14 @@
 #include "r200_uart.h"
 #include "soc_osal.h"
 
-#define R200_FRAME_TIMEOUT_MS 60
-#define R200_MAX_READ_MS      350
-#define R200_SCAN_WINDOW_MS   1800
-#define R200_SCAN_GAP_MS      180
+#define R200_FRAME_TIMEOUT_MS 100
+#define R200_MAX_READ_MS      800
+#define R200_SCAN_WINDOW_MS   2500
+#define R200_SCAN_GAP_MS      300
 #define R200_DEBUG_EVERY_N    30
-#define R200_PARSE_ATTEMPTS   8
+#define R200_PARSE_ATTEMPTS   4
+#define R200_LOG_EVERY_N      10
+#define R200_READER_VERSION   "r200-reader-fix-20260809"
 
 static void r200_print_hex(const char *prefix, const uint8_t *data, size_t length)
 {
@@ -33,6 +35,10 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
     uint16_t payload_length = 0;
     size_t length = 0;
     uint32_t elapsed = 0;
+    static uint32_t no_response_logs = 0;
+    static uint32_t partial_logs = 0;
+    static uint32_t skip_logs = 0;
+    static uint32_t bad_payload_logs = 0;
 
     if (frame == NULL || frame_length == NULL || frame_size < 7) {
         return -1;
@@ -47,7 +53,10 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
         elapsed = 0;
 
         if (length == 0 && byte != 0xAA) {
-            osal_printk("R200 skip byte: %02X\r\n", byte);
+            skip_logs++;
+            if ((skip_logs % R200_LOG_EVERY_N) == 1) {
+                osal_printk("R200 skip byte: %02X\r\n", byte);
+            }
             continue;
         }
 
@@ -61,11 +70,25 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
         if (length == 5) {
             payload_length = (uint16_t)(((uint16_t)frame[3] << 8) | frame[4]);
             if ((size_t)payload_length + 7 > frame_size) {
-                osal_printk("R200 bad payload len: %u\r\n", payload_length);
+                bad_payload_logs++;
+                if ((bad_payload_logs % R200_LOG_EVERY_N) == 1) {
+                    osal_printk("R200 bad payload len: %u\r\n", payload_length);
+                }
                 length = 0;
                 payload_length = 0;
                 continue;
             }
+        }
+
+        if (length > 5 && byte == 0xDD &&
+            length != (size_t)payload_length + 7) {
+            partial_logs++;
+            if ((partial_logs % R200_LOG_EVERY_N) == 1) {
+                r200_print_hex("R200 short frame: ", frame, length);
+            }
+            length = 0;
+            payload_length = 0;
+            continue;
         }
 
         if (length >= 7 && length == (size_t)payload_length + 7) {
@@ -87,9 +110,15 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
     }
 
     if (length > 0) {
-        r200_print_hex("R200 partial frame: ", frame, length);
+        partial_logs++;
+        if ((partial_logs % R200_LOG_EVERY_N) == 1) {
+            r200_print_hex("R200 partial frame: ", frame, length);
+        }
     } else {
-        osal_printk("R200 no response\r\n");
+        no_response_logs++;
+        if ((no_response_logs % R200_LOG_EVERY_N) == 1) {
+            osal_printk("R200 no response\r\n");
+        }
     }
 
     return -1;
@@ -101,6 +130,7 @@ int r200_reader_init(void)
 
     if (ret == 0) {
         osal_printk("R200 uart ready: uart1 115200 8N1\r\n");
+        osal_printk("R200 reader version: %s\r\n", R200_READER_VERSION);
     }
 
     return ret;
@@ -113,6 +143,7 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
     size_t command_length;
     size_t response_length;
     static uint32_t debug_count = 0;
+    static uint32_t no_response_count = 0;
     int debug_this_time;
     uint32_t elapsed = 0;
 
@@ -153,7 +184,12 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
                                                           epc, epc_size);
             if (parse_ret == 0) {
                 osal_printk("R200 EPC: %s\r\n", epc);
+                no_response_count = 0;
                 return 0;
+            }
+
+            if (parse_ret == R200_PARSE_NO_TAG) {
+                break;
             }
 
             if (parse_ret != R200_PARSE_COMMAND_ERROR) {
@@ -165,7 +201,10 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
         elapsed += R200_MAX_READ_MS + R200_SCAN_GAP_MS;
     }
 
-    osal_printk("R200 scan window timeout\r\n");
+    no_response_count++;
+    if ((no_response_count % 5) == 1) {
+        osal_printk("R200 scan window timeout\r\n");
+    }
 
     return -1;
 }
