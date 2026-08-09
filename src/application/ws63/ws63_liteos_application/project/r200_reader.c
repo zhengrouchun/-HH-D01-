@@ -13,7 +13,8 @@
 #define R200_SCAN_GAP_MS      300
 #define R200_DEBUG_EVERY_N    30
 #define R200_PARSE_ATTEMPTS   4
-#define R200_LOG_EVERY_N      10
+#define R200_LOG_EVERY_N      50
+#define R200_LOG_EMPTY_SCAN   0
 #define R200_READER_VERSION   "r200-reader-fix-20260809"
 
 static void r200_print_hex(const char *prefix, const uint8_t *data, size_t length)
@@ -116,7 +117,7 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
         }
     } else {
         no_response_logs++;
-        if ((no_response_logs % R200_LOG_EVERY_N) == 1) {
+        if (R200_LOG_EMPTY_SCAN && (no_response_logs % R200_LOG_EVERY_N) == 1) {
             osal_printk("R200 no response\r\n");
         }
     }
@@ -202,7 +203,7 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
     }
 
     no_response_count++;
-    if ((no_response_count % 5) == 1) {
+    if (R200_LOG_EMPTY_SCAN && (no_response_count % 5) == 1) {
         osal_printk("R200 scan window timeout\r\n");
     }
 

@@ -49,7 +49,6 @@ void clearchain_led_off(clearchain_led_t led)
 void clearchain_led_show_standby(void)
 {
     clearchain_led_all_off();
-    clearchain_led_on(CLEARCHAIN_LED_YELLOW);
 }
 
 void clearchain_led_blink(clearchain_led_t led, unsigned int times,

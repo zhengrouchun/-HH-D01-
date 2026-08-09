@@ -251,7 +251,9 @@ int clearchain_send_scan(const char *chip_uid)
         return -1;
     }
 
-    printf("POST sent:\r\n%s\r\n", http_request);
+    printf("POST sent: %s, body_len=%d\r\n",
+           CLEARCHAIN_HTTP_PATH,
+           (int)strlen(json_body));
 
     scan_led = clearchain_recv_http_response(fd);
     if (scan_led < 0) {

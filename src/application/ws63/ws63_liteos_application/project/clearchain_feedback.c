@@ -30,41 +30,47 @@ void clearchain_feedback_standby(void)
 
 void clearchain_feedback_tag_read(void)
 {
+    osal_printk("Feedback: tag read\r\n");
     clearchain_led_all_off();
-    clearchain_buzzer_beep(80);
-    clearchain_led_blink(CLEARCHAIN_LED_GREEN, 1, 180, 80);
+    clearchain_buzzer_beep(120);
     clearchain_feedback_standby();
 }
 
 void clearchain_feedback_post_success(void)
 {
+    osal_printk("Feedback: approved GREEN\r\n");
     clearchain_led_all_off();
-    clearchain_led_blink(CLEARCHAIN_LED_GREEN, 2, 120, 120);
+    clearchain_led_on(CLEARCHAIN_LED_GREEN);
+    osal_msleep(2000);
     clearchain_feedback_standby();
 }
 
 void clearchain_feedback_post_failed(void)
 {
+    osal_printk("Feedback: post failed RED\r\n");
     clearchain_led_all_off();
     clearchain_led_on(CLEARCHAIN_LED_RED);
-    osal_msleep(1000);
+    clearchain_buzzer_beep(300);
+    osal_msleep(1700);
     clearchain_feedback_standby();
 }
 
 void clearchain_feedback_verify(void)
 {
+    osal_printk("Feedback: verify YELLOW\r\n");
     clearchain_led_all_off();
     clearchain_led_on(CLEARCHAIN_LED_YELLOW);
-    clearchain_buzzer_beep(160);
-    osal_msleep(1000);
+    clearchain_buzzer_beep(250);
+    osal_msleep(1750);
     clearchain_feedback_standby();
 }
 
 void clearchain_feedback_risk_alert(void)
 {
+    osal_printk("Feedback: inspection RED\r\n");
     clearchain_led_all_off();
     clearchain_led_on(CLEARCHAIN_LED_RED);
-    clearchain_buzzer_beep(500);
-    osal_msleep(300);
+    clearchain_buzzer_beep(800);
+    osal_msleep(3000);
     clearchain_feedback_standby();
 }

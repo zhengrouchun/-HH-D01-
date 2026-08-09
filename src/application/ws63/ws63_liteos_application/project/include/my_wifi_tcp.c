@@ -223,8 +223,8 @@ int TCP_SendData(int client_socket_fd,
 
 
     osal_printk(
-        "send:%s\r\n",
-        message);
+        "send ok, bytes=%d\r\n",
+        retval);
 
 
 
