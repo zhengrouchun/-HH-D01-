@@ -118,8 +118,10 @@ void wifi_tcp_client_demo(void *param)
      */
 
     char last_chip_uid[R200_TAG_ID_MAX_LEN] = {0};
+    char present_chip_uid[R200_TAG_ID_MAX_LEN] = {0};
     uint8_t last_scan_stage = 0;
     int missing_tag_rounds = 0;
+    int wait_tag_removed = 0;
 
 
 
@@ -163,11 +165,6 @@ void wifi_tcp_client_demo(void *param)
              * RFID读取反馈
              */
 
-            clearchain_feedback_tag_read();
-
-
-
-
             /*
              * 判断是否为新标签
              */
@@ -175,12 +172,38 @@ void wifi_tcp_client_demo(void *param)
             {
                 const clearchain_stage_config_t *stage_config = clearchain_key_get_stage_config();
 
+            if(wait_tag_removed &&
+               strcmp(chip_uid, present_chip_uid) == 0)
+            {
+                osal_printk(
+                    "Tag still present, remove before next scan, CHIP_UID:%s\r\n",
+                    chip_uid
+                );
+            }
+            else
+            {
+
             if(strcmp(
                     chip_uid,
                     last_chip_uid
                 ) != 0 ||
                 stage_config->stage != last_scan_stage)
             {
+
+
+                clearchain_feedback_tag_read();
+
+                strncpy(
+                    present_chip_uid,
+                    chip_uid,
+                    sizeof(present_chip_uid)-1
+                );
+
+                present_chip_uid[
+                    sizeof(present_chip_uid)-1
+                ] = '\0';
+
+                wait_tag_removed = 1;
 
 
                 osal_printk(
@@ -258,6 +281,16 @@ void wifi_tcp_client_demo(void *param)
 
 
             }
+            else
+            {
+                osal_printk(
+                    "Duplicate tag ignored, CHIP_UID:%s, stage:%u (%s)\r\n",
+                    chip_uid,
+                    stage_config->stage,
+                    stage_config->name
+                );
+            }
+            }
             }
 
 
@@ -271,6 +304,12 @@ void wifi_tcp_client_demo(void *param)
              */
 
             clearchain_feedback_standby();
+
+            if (wait_tag_removed) {
+                osal_printk("Tag removed, ready for next stage\r\n");
+                wait_tag_removed = 0;
+                present_chip_uid[0] = '\0';
+            }
 
             if (last_chip_uid[0] != '\0') {
                 missing_tag_rounds++;

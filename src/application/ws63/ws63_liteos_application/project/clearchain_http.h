@@ -4,7 +4,7 @@
 #include "clearchain_config.h"
 
 #define CLEARCHAIN_HTTP_HOST "0.tcp.jp.ngrok.io"
-#define CLEARCHAIN_HTTP_PORT 20550
+#define CLEARCHAIN_HTTP_PORT 25279
 #define CLEARCHAIN_HTTP_PATH SERVER_PATH
 
 typedef enum {

@@ -35,7 +35,7 @@ static uint8_t g_stable_level[CLEARCHAIN_STAGE_COUNT] = {
     CLEARCHAIN_TCA9555_LEVEL_HIGH,
 };
 static uint8_t g_same_level_count[CLEARCHAIN_STAGE_COUNT] = { 0 };
-static uint8_t g_stage = 4;
+static uint8_t g_stage = 1;
 static int g_key_started = 0;
 
 static void clearchain_key_sync_initial_levels(void)
