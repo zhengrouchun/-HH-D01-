@@ -32,7 +32,6 @@ void clearchain_feedback_tag_read(void)
 {
     osal_printk("Feedback: tag read\r\n");
     clearchain_led_all_off();
-    clearchain_buzzer_beep(120);
     clearchain_feedback_standby();
 }
 

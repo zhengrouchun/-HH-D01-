@@ -5,10 +5,16 @@
 
 /* Five buttons: TCA9555 P10-P14, each button to GND with a 10 kOhm pull-up to 3V3. */
 #define CLEARCHAIN_KEY_PORT        CLEARCHAIN_TCA9555_PORT1
-#define CLEARCHAIN_KEY_PRESSED     CLEARCHAIN_TCA9555_LEVEL_LOW
 #define CLEARCHAIN_KEY_POLL_MS     20
 #define CLEARCHAIN_KEY_DEBOUNCE_COUNT 2
 #define CLEARCHAIN_STAGE_COUNT     5
+
+/*
+ * The stage keys are expected to have pull-ups and short their TCA9555 input
+ * to GND when pressed.  Keep this definition in one place: the boot and edge
+ * logs below make an incorrect wiring/polarity obvious on the serial console.
+ */
+#define CLEARCHAIN_KEY_PRESSED_LEVEL CLEARCHAIN_TCA9555_LEVEL_LOW
 
 static const clearchain_stage_config_t g_stage_configs[CLEARCHAIN_STAGE_COUNT] = {
     { 1, "Factory", "scanner_factory", "PROD-7f2a" },
@@ -35,7 +41,7 @@ static uint8_t g_stable_level[CLEARCHAIN_STAGE_COUNT] = {
     CLEARCHAIN_TCA9555_LEVEL_HIGH,
 };
 static uint8_t g_same_level_count[CLEARCHAIN_STAGE_COUNT] = { 0 };
-static uint8_t g_stage = 1;
+static volatile uint8_t g_stage = 1;
 static int g_key_started = 0;
 
 static void clearchain_key_sync_initial_levels(void)
@@ -47,6 +53,12 @@ static void clearchain_key_sync_initial_levels(void)
             g_last_level[i] = level;
             g_stable_level[i] = level;
             g_same_level_count[i] = 0;
+            osal_printk("Stage key %u input P1%u initial level=%u (pressed level=%u)\r\n",
+                        (uint8_t)(i + 1), g_key_pins[i], level,
+                        CLEARCHAIN_KEY_PRESSED_LEVEL);
+        } else {
+            osal_printk("Stage key %u input P1%u read failed during init\r\n",
+                        (uint8_t)(i + 1), g_key_pins[i]);
         }
     }
 }
@@ -64,6 +76,9 @@ static int clearchain_key_poll(uint8_t key_index)
     }
 
     if (level != g_last_level[key_index]) {
+        osal_printk("Stage key %u input P1%u changed: %u -> %u\r\n",
+                    (uint8_t)(key_index + 1), g_key_pins[key_index],
+                    g_last_level[key_index], level);
         g_last_level[key_index] = level;
         g_same_level_count[key_index] = 0;
         return 0;
@@ -76,7 +91,7 @@ static int clearchain_key_poll(uint8_t key_index)
     if (level != g_stable_level[key_index] &&
         g_same_level_count[key_index] >= CLEARCHAIN_KEY_DEBOUNCE_COUNT) {
         g_stable_level[key_index] = level;
-        return level == CLEARCHAIN_KEY_PRESSED;
+        return level == CLEARCHAIN_KEY_PRESSED_LEVEL;
     }
 
     return 0;
