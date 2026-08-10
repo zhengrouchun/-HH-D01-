@@ -105,12 +105,19 @@ static void clearchain_key_task(void *param)
 void clearchain_key_start(void)
 {
     osal_task *task_handle;
+    const clearchain_stage_config_t *stage_config = clearchain_key_get_stage_config();
 
     if (g_key_started) {
         return;
     }
 
     clearchain_key_sync_initial_levels();
+
+    osal_printk("Stage key default: selected stage %u (%s), scanner_id=%s, stage_code=%s\r\n",
+                stage_config->stage,
+                stage_config->name,
+                stage_config->scanner_id,
+                stage_config->stage_code);
 
     task_handle = osal_kthread_create((osal_kthread_handler)clearchain_key_task, 0, "ClearChainKey", 0x800);
     if (task_handle == NULL) {

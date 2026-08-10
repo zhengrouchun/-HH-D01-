@@ -309,6 +309,9 @@ void wifi_tcp_client_demo(void *param)
                 osal_printk("Tag removed, ready for next stage\r\n");
                 wait_tag_removed = 0;
                 present_chip_uid[0] = '\0';
+                last_chip_uid[0] = '\0';
+                last_scan_stage = 0;
+                missing_tag_rounds = 0;
             }
 
             if (last_chip_uid[0] != '\0') {

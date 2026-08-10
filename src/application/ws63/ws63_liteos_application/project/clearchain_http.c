@@ -54,6 +54,47 @@ static void clearchain_print_redirect_location(const char *response)
     printf("HTTP redirect Location: %s\r\n", location_buf);
 }
 
+static const char *clearchain_skip_json_space(const char *p)
+{
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
+        p++;
+    }
+
+    return p;
+}
+
+static int clearchain_json_string_field_equals(const char *json, const char *field, const char *value)
+{
+    char key[48];
+    const char *p = json;
+    size_t value_len = strlen(value);
+
+    snprintf(key, sizeof(key), "\"%s\"", field);
+
+    while ((p = strstr(p, key)) != NULL) {
+        p += strlen(key);
+        p = clearchain_skip_json_space(p);
+
+        if (*p != ':') {
+            continue;
+        }
+
+        p++;
+        p = clearchain_skip_json_space(p);
+
+        if (*p != '"') {
+            continue;
+        }
+
+        p++;
+        if (strncmp(p, value, value_len) == 0 && p[value_len] == '"') {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int clearchain_recv_http_response(int fd)
 {
     char recv_buf[512];
@@ -99,16 +140,19 @@ static int clearchain_recv_http_response(int fd)
     }
 
     if (status_code >= 200 && status_code < 300) {
-        if (strstr(response, "GREEN") != NULL || strstr(response, "APPROVED") != NULL) {
-            return CLEARCHAIN_SCAN_LED_GREEN;
+        if (clearchain_json_string_field_equals(response, "color", "RED") ||
+            clearchain_json_string_field_equals(response, "status", "INSPECTION REQUIRED")) {
+            return CLEARCHAIN_SCAN_LED_RED;
         }
 
-        if (strstr(response, "ORANGE") != NULL || strstr(response, "VERIFY") != NULL) {
+        if (clearchain_json_string_field_equals(response, "color", "ORANGE") ||
+            clearchain_json_string_field_equals(response, "status", "VERIFY")) {
             return CLEARCHAIN_SCAN_LED_ORANGE;
         }
 
-        if (strstr(response, "RED") != NULL || strstr(response, "INSPECTION") != NULL) {
-            return CLEARCHAIN_SCAN_LED_RED;
+        if (clearchain_json_string_field_equals(response, "color", "GREEN") ||
+            clearchain_json_string_field_equals(response, "status", "APPROVED")) {
+            return CLEARCHAIN_SCAN_LED_GREEN;
         }
 
         printf("HTTP response LED state not found, default ORANGE\r\n");
