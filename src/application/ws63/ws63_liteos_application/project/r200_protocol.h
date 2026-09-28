@@ -15,6 +15,7 @@ int r200_protocol_build_inventory(uint8_t *frame,
 int r200_protocol_parse_inventory(const uint8_t *frame,
                                   size_t frame_length,
                                   char *epc,
-                                  size_t epc_size);
+                                  size_t epc_size,
+                                  int8_t *rssi);
 
 #endif

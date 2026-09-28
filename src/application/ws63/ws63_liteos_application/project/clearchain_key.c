@@ -42,6 +42,7 @@ static uint8_t g_stable_level[CLEARCHAIN_STAGE_COUNT] = {
 };
 static uint8_t g_same_level_count[CLEARCHAIN_STAGE_COUNT] = { 0 };
 static volatile uint8_t g_stage = 1;
+static volatile clearchain_mode_t g_mode = CLEARCHAIN_MODE_STAGE_1;
 static int g_key_started = 0;
 
 static void clearchain_key_sync_initial_levels(void)
@@ -105,6 +106,7 @@ static void clearchain_key_task(void *param)
         for (uint8_t i = 0; i < CLEARCHAIN_STAGE_COUNT; i++) {
             if (clearchain_key_poll(i)) {
                 g_stage = g_stage_configs[i].stage;
+                g_mode = (clearchain_mode_t)(CLEARCHAIN_MODE_STAGE_1 + i);
                 osal_printk("Stage button %u pressed: selected stage %u (%s), scanner_id=%s, stage_code=%s\r\n",
                             (uint8_t)(i + 1),
                             g_stage,
@@ -148,6 +150,11 @@ void clearchain_key_start(void)
 uint8_t clearchain_key_get_stage(void)
 {
     return g_stage;
+}
+
+clearchain_mode_t clearchain_key_get_mode(void)
+{
+    return g_mode;
 }
 
 const clearchain_stage_config_t *clearchain_key_get_stage_config(void)

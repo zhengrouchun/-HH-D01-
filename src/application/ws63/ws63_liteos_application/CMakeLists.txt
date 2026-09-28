@@ -10,7 +10,9 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/clock_init.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/tcp_client_demo.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_http.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_soft_i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_tca9555.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_oled.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_key.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_led.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_buzzer.c

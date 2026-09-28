@@ -20,7 +20,7 @@
 
 
 // Flask端口
-#define SERVER_PORT 20550
+#define SERVER_PORT 25279
 
 
 // HTTP接口

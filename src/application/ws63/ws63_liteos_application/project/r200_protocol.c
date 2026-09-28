@@ -143,7 +143,8 @@ int r200_protocol_build_inventory(uint8_t *frame,
 int r200_protocol_parse_inventory(const uint8_t *frame,
                                   size_t frame_length,
                                   char *epc,
-                                  size_t epc_size)
+                                  size_t epc_size,
+                                  int8_t *rssi)
 {
 
     uint16_t payload_length;
@@ -158,6 +159,7 @@ int r200_protocol_parse_inventory(const uint8_t *frame,
 
     if(frame == NULL ||
        epc == NULL ||
+       rssi == NULL ||
        frame_length < 7 ||
        epc_size == 0)
     {
@@ -357,6 +359,8 @@ int r200_protocol_parse_inventory(const uint8_t *frame,
 
 
     epc[epc_length*2]='\0';
+
+    *rssi = (int8_t)frame[5];
 
 
 

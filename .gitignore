@@ -4,6 +4,15 @@
 # HiSpark Studio工程文件
 *.hiproj
 
+# AI / IDE 工具目录
+.workbuddy/
+
+# 压缩备份文件
+*.zip
+
+# 临时日志
+*.log
+
 # 编译输出
 src/output/
 output/
