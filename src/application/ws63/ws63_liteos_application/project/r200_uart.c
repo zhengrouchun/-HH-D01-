@@ -90,6 +90,13 @@ static void r200_uart_rx_isr(const void *buffer, uint16_t length, bool error)
     }
 }
 
+static int r200_uart_register_rx_callback(void)
+{
+    return (uapi_uart_register_rx_callback(R200_UART_BUS,
+        UART_RX_CONDITION_FULL_OR_IDLE, R200_UART_RX_BLOCK_SIZE,
+        r200_uart_rx_isr) == ERRCODE_SUCC) ? 0 : -1;
+}
+
 static uint8_t r200_uart_frame_checksum(const uint8_t *frame, size_t payload_length)
 {
     uint16_t sum = 0U;
@@ -192,9 +199,7 @@ int r200_uart_init(void)
         g_r200_uart_rx_event_ready = 1;
     }
 
-    if (uapi_uart_register_rx_callback(R200_UART_BUS,
-        UART_RX_CONDITION_FULL_OR_IDLE, R200_UART_RX_BLOCK_SIZE,
-        r200_uart_rx_isr) != ERRCODE_SUCC) {
+    if (r200_uart_register_rx_callback() != 0) {
         osal_printk("R200 UART RX interrupt register failed\r\n");
         return -1;
     }
@@ -218,7 +223,7 @@ void r200_uart_prepare_receive(void)
 {
     unsigned int irq_status;
 
-    (void)uapi_uart_flush_rx_data(R200_UART_BUS);
+    uapi_uart_unregister_rx_callback(R200_UART_BUS);
     irq_status = osal_irq_lock();
     g_r200_uart_ring_head = 0U;
     g_r200_uart_ring_tail = 0U;
@@ -226,6 +231,9 @@ void r200_uart_prepare_receive(void)
     osal_irq_restore(irq_status);
     if (g_r200_uart_rx_event_ready) {
         (void)osal_event_clear(&g_r200_uart_rx_event, R200_UART_RX_EVENT);
+    }
+    if (r200_uart_register_rx_callback() != 0) {
+        osal_printk("R200 UART RX interrupt re-register failed\r\n");
     }
 }
 
