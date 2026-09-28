@@ -311,3 +311,182 @@ int clearchain_send_scan(const char *chip_uid)
 
     return scan_led;
 }
+
+static int clearchain_json_escape(const char *input, char *output, size_t output_size)
+{
+    size_t used = 0;
+    if (input == NULL || output == NULL || output_size == 0U) {
+        return -1;
+    }
+    for (const unsigned char *p = (const unsigned char *)input; *p != 0U; p++) {
+        if (*p < 0x20U) {
+            return -1;
+        }
+        if (*p == '"' || *p == '\\') {
+            if (used + 2U >= output_size) {
+                return -1;
+            }
+            output[used++] = '\\';
+        } else if (used + 1U >= output_size) {
+            return -1;
+        }
+        output[used++] = (char)*p;
+    }
+    output[used] = '\0';
+    return 0;
+}
+
+/* Transport shared by the two confirmed endpoints; batch orchestration waits
+ * for the backend contract. response receives the raw HTTP response. */
+static int clearchain_post_json(const char *path, const char *body,
+                                char *response, size_t response_size)
+{
+    char request[768];
+    char host_header[96];
+    size_t received = 0U;
+    int fd;
+    int written;
+    int status_code = -1;
+
+    if (path == NULL || body == NULL || response == NULL || response_size < 16U) {
+        return -1;
+    }
+    response[0] = '\0';
+    if (CLEARCHAIN_HTTP_PORT == 80) {
+        written = snprintf(host_header, sizeof(host_header), "%s", CLEARCHAIN_HTTP_HOST);
+    } else {
+        written = snprintf(host_header, sizeof(host_header), "%s:%d",
+                           CLEARCHAIN_HTTP_HOST, CLEARCHAIN_HTTP_PORT);
+    }
+    if (written < 0 || (size_t)written >= sizeof(host_header)) {
+        return -1;
+    }
+    written = snprintf(request, sizeof(request),
+                       "POST %s HTTP/1.1\r\n"
+                       "Host: %s\r\n"
+                       "Content-Type: application/json\r\n"
+                       "ngrok-skip-browser-warning: true\r\n"
+                       "Connection: close\r\n"
+                       "Content-Length: %u\r\n\r\n%s",
+                       path, host_header, (unsigned int)strlen(body), body);
+    if (written < 0 || (size_t)written >= sizeof(request)) {
+        return -1;
+    }
+    fd = clearchain_connect_http_server();
+    if (fd < 0) {
+        return -1;
+    }
+    if (TCP_SendData(fd, request) < 0) {
+        TCP_CloseClient(fd);
+        return -1;
+    }
+    for (;;) {
+        int ret;
+        if (received + 1U >= response_size) {
+            TCP_CloseClient(fd);
+            return -1;
+        }
+        ret = recv(fd, response + received, (int)(response_size - received - 1U), 0);
+        if (ret == 0) {
+            break;
+        }
+        if (ret < 0) {
+            TCP_CloseClient(fd);
+            return -1;
+        }
+        received += (size_t)ret;
+        response[received] = '\0';
+    }
+    TCP_CloseClient(fd);
+    if (sscanf(response, "HTTP/%*d.%*d %d", &status_code) != 1 ||
+        status_code < 200 || status_code >= 300) {
+        printf("HTTP %s failed: status=%d\r\n", path, status_code);
+        return -1;
+    }
+    return 0;
+}
+
+int clearchain_send_factory_scan(const char *chip_uid)
+{
+    char escaped_uid[2U * 65U];
+    char body[160];
+    char response[1024];
+    int written;
+    if (chip_uid == NULL || chip_uid[0] == '\0' ||
+        clearchain_json_escape(chip_uid, escaped_uid, sizeof(escaped_uid)) != 0) {
+        return -1;
+    }
+    /* Only chip_uid is required by the confirmed /factory_scan contract. */
+    written = snprintf(body, sizeof(body), "{\"chip_uid\":\"%s\"}", escaped_uid);
+    if (written < 0 || (size_t)written >= sizeof(body)) {
+        return -1;
+    }
+    return clearchain_post_json("/factory_scan", body, response, sizeof(response));
+}
+
+int clearchain_send_verify_scan(const char *chip_uid, const char *location,
+                                clearchain_verify_response_t *result)
+{
+    char escaped_uid[2U * 65U];
+    char escaped_location[192];
+    char body[384];
+    char response[1536];
+    const char *json;
+    const char *risk;
+    int written;
+    int score;
+
+    if (chip_uid == NULL || chip_uid[0] == '\0' || location == NULL || result == NULL ||
+        clearchain_json_escape(chip_uid, escaped_uid, sizeof(escaped_uid)) != 0 ||
+        clearchain_json_escape(location, escaped_location, sizeof(escaped_location)) != 0) {
+        return -1;
+    }
+    result->result = CLEARCHAIN_VERIFY_UNKNOWN;
+    result->risk_score = 0;
+    result->risk_score_valid = 0;
+    written = snprintf(body, sizeof(body),
+                       "{\"chip_uid\":\"%s\",\"verify_code\":\"VERIFY-q4m8\","
+                       "\"location\":\"%s\"}", escaped_uid, escaped_location);
+    if (written < 0 || (size_t)written >= sizeof(body) ||
+        clearchain_post_json("/verify_scan", body, response, sizeof(response)) != 0) {
+        return -1;
+    }
+    json = strstr(response, "\r\n\r\n");
+    if (json == NULL) {
+        return -1;
+    }
+    json += 4;
+    if (clearchain_json_string_field_equals(json, "result", "AUTHORIZED")) {
+        result->result = CLEARCHAIN_VERIFY_AUTHORIZED;
+    } else if (clearchain_json_string_field_equals(json, "result", "MONITOR")) {
+        result->result = CLEARCHAIN_VERIFY_MONITOR;
+    } else if (clearchain_json_string_field_equals(json, "result", "ALERT")) {
+        result->result = CLEARCHAIN_VERIFY_ALERT;
+    } else {
+        return -1;
+    }
+    risk = strstr(json, "\"risk_score\"");
+    if (risk != NULL) {
+        risk = strchr(risk, ':');
+        if (risk != NULL && sscanf(risk + 1, " %d", &score) == 1 &&
+            score >= 0 && score <= 100) {
+            result->risk_score = score;
+            result->risk_score_valid = 1;
+        }
+    }
+    return 0;
+}
+
+clearchain_scan_led_t clearchain_verify_result_to_scan_led(clearchain_verify_result_t result)
+{
+    switch (result) {
+        case CLEARCHAIN_VERIFY_AUTHORIZED:
+            return CLEARCHAIN_SCAN_LED_GREEN;
+        case CLEARCHAIN_VERIFY_MONITOR:
+            return CLEARCHAIN_SCAN_LED_ORANGE;
+        case CLEARCHAIN_VERIFY_ALERT:
+            return CLEARCHAIN_SCAN_LED_RED;
+        default:
+            return CLEARCHAIN_SCAN_LED_UNKNOWN;
+    }
+}

@@ -3,6 +3,40 @@
 # Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2023-2023. All rights reserved.
 #===============================================================================
 
+choice
+    prompt "ClearChain display SLE role"
+    default CLEARCHAIN_DISPLAY_SLE_OFF
+
+config CLEARCHAIN_DISPLAY_SLE_OFF
+    bool "ClearChain display SLE disabled"
+
+config CLEARCHAIN_DISPLAY_SLE_SERVER
+    bool "ClearChain display SLE server (Board A)"
+
+config CLEARCHAIN_DISPLAY_SLE_CLIENT
+    bool "ClearChain display SLE client (Board B)"
+
+endchoice
+
+config CLEARCHAIN_DISPLAY_CLIENT_MTU_SIZE
+    int "ClearChain display client MTU"
+    default 520
+    range 64 520
+    depends on CLEARCHAIN_DISPLAY_SLE_CLIENT
+
+config CLEARCHAIN_DISPLAY_SLE_LINK_TEST
+    bool "Send one ClearChain display link test after each connection"
+    default n
+    depends on CLEARCHAIN_DISPLAY_SLE_SERVER
+
+config SUPPORT_SLE_PERIPHERAL
+    bool
+    default y if CLEARCHAIN_DISPLAY_SLE_SERVER
+
+config SUPPORT_SLE_CENTRAL
+    bool
+    default y if CLEARCHAIN_DISPLAY_SLE_CLIENT
+
 config SAMPLE_ENABLE
     bool
     prompt "Enable Sample."

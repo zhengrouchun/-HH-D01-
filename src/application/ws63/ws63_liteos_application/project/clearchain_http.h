@@ -3,8 +3,8 @@
 
 #include "clearchain_config.h"
 
-#define CLEARCHAIN_HTTP_HOST "0.tcp.jp.ngrok.io"
-#define CLEARCHAIN_HTTP_PORT 25279
+#define CLEARCHAIN_HTTP_HOST SERVER_IP
+#define CLEARCHAIN_HTTP_PORT SERVER_PORT
 #define CLEARCHAIN_HTTP_PATH SERVER_PATH
 
 typedef enum {
@@ -28,5 +28,27 @@ typedef enum {
  * Return CLEARCHAIN_SCAN_LED_* on success, -1 on failure.
  */
 int clearchain_send_scan(const char *chip_uid);
+
+typedef enum {
+    CLEARCHAIN_VERIFY_AUTHORIZED = 0,
+    CLEARCHAIN_VERIFY_MONITOR,
+    CLEARCHAIN_VERIFY_ALERT,
+    CLEARCHAIN_VERIFY_UNKNOWN
+} clearchain_verify_result_t;
+
+typedef struct {
+    clearchain_verify_result_t result;
+    int risk_score;
+    int risk_score_valid;
+} clearchain_verify_response_t;
+
+/* These known endpoints are available to future business orchestration. */
+int clearchain_send_factory_scan(const char *chip_uid);
+int clearchain_send_verify_scan(const char *chip_uid, const char *location,
+                                clearchain_verify_response_t *response);
+clearchain_scan_led_t clearchain_verify_result_to_scan_led(clearchain_verify_result_t result);
+
+/* TODO: waiting for backend contract for register/verify batch response and call order. */
+/* TODO: waiting for a real cross-device batch_id resolution contract. */
 
 #endif

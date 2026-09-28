@@ -23,6 +23,7 @@ Licensed under the Apache License, Version 2.0
 #include "clearchain_http.h"
 #include "clearchain_tca9555.h"
 #include "clearchain_key.h"
+#include "clearchain_display_link.h"
 
 #include "r200_reader.h"
 
@@ -128,6 +129,7 @@ wifi_connectTo_AP() 这个函数执行结束，程序已经从这个函数里面
     );
 
     clearchain_key_start();
+    (void)clearchain_display_show_waiting(clearchain_key_get_stage());
 
     /*
      * 保存上一次扫描到的chip_uid
@@ -267,13 +269,25 @@ while(1)
     CLEARCHAIN_SCAN_LED_UNKNOWN = 3
 } clearchain_scan_led_t;*/
                 {
+                    /* TODO: waiting for backend contract. This preserved
+                     * single-tag /scan path is for existing tests. Do not
+                     * infer the S1 factory/register_batch call order here. */
                     scan_led = clearchain_send_scan(chip_uid);
+                    clearchain_display_result_t display_result = CLEARCHAIN_DISPLAY_RESULT_UNKNOWN;
+                    if (scan_led == CLEARCHAIN_SCAN_LED_GREEN) {
+                        display_result = CLEARCHAIN_DISPLAY_RESULT_APPROVED;
+                    } else if (scan_led == CLEARCHAIN_SCAN_LED_ORANGE) {
+                        display_result = CLEARCHAIN_DISPLAY_RESULT_MONITOR;
+                    } else if (scan_led == CLEARCHAIN_SCAN_LED_RED) {
+                        display_result = CLEARCHAIN_DISPLAY_RESULT_REJECT;
+                    }
+                    (void)clearchain_display_show_result(display_result, CLEARCHAIN_RISK_SCORE_UNKNOWN);
 //调用 clearchain_send_scan() 函数，把当前 RFID 标签的 EPC 也就是 chip_uid，交给它。
                     if(scan_led == CLEARCHAIN_SCAN_LED_GREEN)
                     {
                         clearchain_feedback_post_success();//执行成功反馈。
                     }
-                    else if(scan_led == CLEARCHAIN_SCAN_LED_ORANGE)。
+                    else if(scan_led == CLEARCHAIN_SCAN_LED_ORANGE)
                     {
                         clearchain_feedback_verify();//需要进一步核验
 /*关灯
@@ -431,6 +445,7 @@ wait_tag_removed = 1
 wait_tag_removed = 0*/
                 osal_printk("Tag removed, ready for next stage\r\n");
                 wait_tag_removed = 0;
+                (void)clearchain_display_show_waiting(clearchain_key_get_stage());
                 //不再等待拿卡，现在可以接受下一次扫描。
                 present_chip_uid[0] = '\0';
 /*意思是：把 present_chip_uid 这个字符串的第 1 个字符改成字符串结束符 '\0'。
@@ -498,6 +513,9 @@ tcp_client_demo_entry()
 它只是负责：创建一个任务，让 wifi_tcp_client_demo() 去真正干活。*/
 {
     osal_task *task_handle = NULL;
+    if (clearchain_display_link_init() != 0) {
+        osal_printk("[CLEAR SLE] display link init failed; ClearChain continues\r\n");
+    }
 /*定义一个任务句柄：
 task_handle
 ↓
