@@ -9,6 +9,8 @@
 #include "sle_errcode.h"
 #include "sle_ssap_server.h"
 #include "soc_osal.h"
+#include "systick.h"
+#include "clearchain_runtime_config.h"
 
 #define CLEAR_DISPLAY_TASK_PRIORITY 28
 #define CLEAR_DISPLAY_TASK_STACK 0x1800
@@ -23,13 +25,6 @@
 #define CLEAR_DISPLAY_ADV_ACCESS_TYPE 0x02
 #define CLEAR_DISPLAY_ADV_POWER_TYPE 0x0C
 
-typedef struct {
-    uint32_t epoch;
-    uint8_t length;
-    uint8_t bytes[CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE];
-} clearchain_display_tx_message_t;
-
-static unsigned long g_clearchain_display_queue;
 static volatile bool g_clearchain_display_started;
 static volatile bool g_clearchain_display_connected;
 static volatile bool g_clearchain_display_ready;
@@ -39,12 +34,15 @@ static uint8_t g_clearchain_display_server_id;
 static uint16_t g_clearchain_display_service_handle;
 static uint16_t g_clearchain_display_property_handle;
 static uint16_t g_clearchain_display_conn_id;
-static clearchain_display_tx_message_t g_clearchain_display_latest;
-static bool g_clearchain_display_has_latest;
-#if defined(CONFIG_CLEARCHAIN_DISPLAY_SLE_LINK_TEST)
-static volatile bool g_clearchain_display_test_pending;
-#endif
-
+static uint32_t g_generation;
+static uint32_t g_sequence;
+static uint8_t g_command = CLEARCHAIN_DISPLAY_CMD_WAITING;
+static clearchain_display_state_t g_state = {
+    .stage = 1, .phase = CLEARCHAIN_DISPLAY_WAITING,
+    .result = CLEARCHAIN_DISPLAY_RESULT_UNKNOWN,
+    .risk_score = CLEARCHAIN_RISK_SCORE_UNKNOWN,
+    .flags = CLEARCHAIN_UPLOAD_ALLOWED ? 0 : CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED
+};
 static const uint8_t g_clearchain_display_uuid_base[16] = {
     0x37, 0xBE, 0xA8, 0x80, 0xFC, 0x70, 0x11, 0xEA,
     0xB7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
@@ -63,85 +61,84 @@ static bool clearchain_display_valid_stage(uint8_t stage)
     return stage >= CLEARCHAIN_DISPLAY_MIN_STAGE && stage <= CLEARCHAIN_DISPLAY_MAX_STAGE;
 }
 
-static int clearchain_display_publish(uint8_t command, const uint8_t *payload, uint8_t payload_len)
+/* One-slot coalescing mailbox. Producers only copy state under an IRQ lock. */
+static int clearchain_display_update(uint8_t command, uint8_t stage, uint8_t percent,
+                                    uint8_t tags, uint16_t samples, uint8_t result,
+                                    uint8_t risk, uint16_t error)
 {
-    clearchain_display_tx_message_t message = {0};
-    unsigned int irq_status;
-
-    if (!g_clearchain_display_started || payload == NULL ||
-        payload_len + CLEARCHAIN_DISPLAY_HEADER_SIZE > CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE) {
-        return -1;
+    if (!clearchain_display_valid_stage(stage) || percent > 100U ||
+        result > CLEARCHAIN_DISPLAY_RESULT_LOCAL_CAPTURE ||
+        (risk > 100U && risk != CLEARCHAIN_RISK_SCORE_UNKNOWN)) { return -1; }
+    unsigned int irq = osal_irq_lock();
+    g_state.stage = stage;
+    g_state.error = error;
+    if (command == CLEARCHAIN_DISPLAY_CMD_WAITING || command == CLEARCHAIN_DISPLAY_CMD_STAGE_CHANGED ||
+        command == CLEARCHAIN_DISPLAY_CMD_SCAN_STARTED) {
+        g_state.phase = command == CLEARCHAIN_DISPLAY_CMD_SCAN_STARTED ? CLEARCHAIN_DISPLAY_SCANNING : CLEARCHAIN_DISPLAY_WAITING;
+        g_state.percent = 0; g_state.tag_count = 0; g_state.total_samples = 0;
+        g_state.result = CLEARCHAIN_DISPLAY_RESULT_UNKNOWN;
+        g_state.risk_score = CLEARCHAIN_RISK_SCORE_UNKNOWN;
+        g_state.flags = CLEARCHAIN_UPLOAD_ALLOWED ? 0 : CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED;
+    } else if (command == CLEARCHAIN_DISPLAY_CMD_SCAN_PROGRESS) {
+        g_state.phase = CLEARCHAIN_DISPLAY_SCANNING;
+        g_state.percent = percent; g_state.tag_count = tags; g_state.total_samples = samples;
+        g_state.flags |= CLEARCHAIN_DISPLAY_FLAG_TIME_PROGRESS;
+    } else if (command == CLEARCHAIN_DISPLAY_CMD_RESULT) {
+        g_state.phase = CLEARCHAIN_DISPLAY_FINISHED;
+        g_state.result = result; g_state.risk_score = risk;
+        if (result == CLEARCHAIN_DISPLAY_RESULT_LOCAL_CAPTURE) {
+            g_state.percent = 100; g_state.tag_count = tags; g_state.total_samples = samples;
+        }
+    } else if (command == CLEARCHAIN_DISPLAY_CMD_ERROR) {
+        g_state.phase = CLEARCHAIN_DISPLAY_ERROR;
+        g_state.result = CLEARCHAIN_DISPLAY_RESULT_UNKNOWN;
+        g_state.risk_score = CLEARCHAIN_RISK_SCORE_UNKNOWN;
     }
-    message.length = (uint8_t)(CLEARCHAIN_DISPLAY_HEADER_SIZE + payload_len);
-    message.bytes[0] = CLEARCHAIN_DISPLAY_PROTOCOL_VERSION;
-    message.bytes[1] = command;
-    message.bytes[2] = payload_len;
-    (void)memcpy(&message.bytes[CLEARCHAIN_DISPLAY_HEADER_SIZE], payload, payload_len);
+    g_command = command;
+    g_generation++;
+    osal_irq_restore(irq);
+    return 0;
+}
+int clearchain_display_show_waiting(uint8_t stage)
+{ return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_WAITING, stage, 0, 0, 0, 3, 255, 0); }
+int clearchain_display_stage_changed(uint8_t stage)
+{ return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_STAGE_CHANGED, stage, 0, 0, 0, 3, 255, 0); }
+int clearchain_display_scan_started(uint8_t stage)
+{ return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_SCAN_STARTED, stage, 0, 0, 0, 3, 255, 0); }
+int clearchain_display_scan_update(uint8_t stage, uint8_t percent, uint8_t tags, uint16_t samples)
+{ return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_SCAN_PROGRESS, stage, percent, tags, samples, 3, 255, 0); }
+int clearchain_display_show_progress(uint8_t stage, uint8_t percent)
+{ return clearchain_display_scan_update(stage, percent, 0, 0); }
+int clearchain_display_scan_complete(uint8_t stage, uint8_t tags, uint16_t samples)
+{ return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_RESULT, stage, 100, tags, samples, CLEARCHAIN_DISPLAY_RESULT_LOCAL_CAPTURE, 255, 0); }
+int clearchain_display_show_error(uint8_t stage, uint16_t error)
+{ return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_ERROR, stage, 0, 0, 0, 3, 255, error); }
+int clearchain_display_show_result(clearchain_display_result_t result, uint8_t risk_score)
+{
+    unsigned int irq = osal_irq_lock();
+    uint8_t stage = g_state.stage;
+    osal_irq_restore(irq);
+    return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_RESULT, stage, 0, 0, 0, result, risk_score, 0);
+}
+bool clearchain_display_is_connected(void) { return g_clearchain_display_connected; }
 
-    irq_status = osal_irq_lock();
-    message.epoch = g_clearchain_display_epoch;
-    g_clearchain_display_latest = message;
-    g_clearchain_display_has_latest = true;
-    osal_irq_restore(irq_status);
-
-    if (!g_clearchain_display_ready) {
-        return 0; /* Keep the newest state for the next connection. */
-    }
-    if (osal_msg_queue_write_copy(g_clearchain_display_queue, &message, sizeof(message), 0) != OSAL_SUCCESS) {
-        g_clearchain_display_replay_pending = true;
+static int clearchain_display_send(uint8_t command, const clearchain_display_state_t *state, uint32_t epoch)
+{
+    uint8_t bytes[CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE];
+    ssaps_ntf_ind_t notification = {0};
+    if (!g_clearchain_display_ready || epoch != g_clearchain_display_epoch) { return -1; }
+    int length = clearchain_display_encode(bytes, sizeof(bytes), command, ++g_sequence, state);
+    if (length < 0) { return -1; }
+    notification.handle = g_clearchain_display_property_handle;
+    notification.type = SSAP_PROPERTY_TYPE_VALUE;
+    notification.value = bytes;
+    notification.value_len = (uint16_t)length;
+    errcode_t status = ssaps_notify_indicate(g_clearchain_display_server_id, g_clearchain_display_conn_id, &notification);
+    if (status != ERRCODE_SLE_SUCCESS) {
+        osal_printk("[CLEAR SLE] notification failed: 0x%x\r\n", status);
         return -1;
     }
     return 0;
-}
-
-int clearchain_display_show_waiting(uint8_t stage)
-{
-    return clearchain_display_valid_stage(stage) ?
-        clearchain_display_publish(CLEARCHAIN_DISPLAY_CMD_WAITING, &stage, 1) : -1;
-}
-
-int clearchain_display_stage_changed(uint8_t stage)
-{
-    return clearchain_display_valid_stage(stage) ?
-        clearchain_display_publish(CLEARCHAIN_DISPLAY_CMD_STAGE_CHANGED, &stage, 1) : -1;
-}
-
-int clearchain_display_show_progress(uint8_t stage, uint8_t percent)
-{
-    uint8_t payload[2] = {stage, percent};
-    return (clearchain_display_valid_stage(stage) && percent <= 100U) ?
-        clearchain_display_publish(CLEARCHAIN_DISPLAY_CMD_SCAN_PROGRESS, payload, sizeof(payload)) : -1;
-}
-
-int clearchain_display_show_result(clearchain_display_result_t result, uint8_t risk_score)
-{
-    uint8_t payload[2] = {(uint8_t)result, risk_score};
-    return (result <= CLEARCHAIN_DISPLAY_RESULT_UNKNOWN &&
-            (risk_score <= 100U || risk_score == CLEARCHAIN_RISK_SCORE_UNKNOWN)) ?
-        clearchain_display_publish(CLEARCHAIN_DISPLAY_CMD_RESULT, payload, sizeof(payload)) : -1;
-}
-
-bool clearchain_display_is_connected(void)
-{
-    return g_clearchain_display_connected;
-}
-
-static void clearchain_display_send(const clearchain_display_tx_message_t *message)
-{
-    ssaps_ntf_ind_t notification = {0};
-    errcode_t status;
-
-    if (!g_clearchain_display_ready || message->epoch != g_clearchain_display_epoch) {
-        return;
-    }
-    notification.handle = g_clearchain_display_property_handle;
-    notification.type = SSAP_PROPERTY_TYPE_VALUE;
-    notification.value = (uint8_t *)message->bytes;
-    notification.value_len = message->length;
-    status = ssaps_notify_indicate(g_clearchain_display_server_id, g_clearchain_display_conn_id, &notification);
-    if (status != ERRCODE_SLE_SUCCESS) {
-        osal_printk("[CLEAR SLE] notification failed: 0x%x\r\n", status);
-    }
 }
 
 static void clearchain_display_mtu_changed(uint8_t server_id, uint16_t conn_id,
@@ -153,9 +150,6 @@ static void clearchain_display_mtu_changed(uint8_t server_id, uint16_t conn_id,
         conn_id == g_clearchain_display_conn_id) {
         g_clearchain_display_ready = true;
         g_clearchain_display_replay_pending = true;
-#if defined(CONFIG_CLEARCHAIN_DISPLAY_SLE_LINK_TEST)
-        g_clearchain_display_test_pending = true;
-#endif
     }
 }
 
@@ -208,10 +202,11 @@ static void clearchain_display_write_request(uint8_t server_id, uint16_t conn_id
                                               ssaps_req_write_cb_t *request, errcode_t status)
 {
     unused(server_id);
-    unused(conn_id);
-    unused(request);
-    unused(status);
-    /* The first display protocol version is one-way. */
+    if (status == ERRCODE_SLE_SUCCESS && request != NULL && request->value != NULL &&
+        conn_id == g_clearchain_display_conn_id && request->handle == g_clearchain_display_property_handle &&
+        request->length == 2U && request->value[0] == 'R' && request->value[1] == CLEARCHAIN_DISPLAY_PROTOCOL_VERSION) {
+        g_clearchain_display_replay_pending = true;
+    }
 }
 
 static errcode_t clearchain_display_register_server(void)
@@ -339,74 +334,48 @@ static errcode_t clearchain_display_start_advertising(void)
 
 static void *clearchain_display_task(void *arg)
 {
-    clearchain_display_tx_message_t message;
-    unsigned int read_length;
-    unsigned int irq_status;
     errcode_t status;
+    uint32_t sent_generation = UINT32_MAX;
+    uint64_t last_send = 0U;
     unused(arg);
-
-    /* SLE core startup is asynchronous; this wait stays outside ClearChain tasks. */
     (void)osal_msleep(5000);
     status = enable_sle();
-    if (status == ERRCODE_SLE_SUCCESS) {
-        status = clearchain_display_register_server();
-    }
-    if (status == ERRCODE_SLE_SUCCESS) {
-        status = clearchain_display_start_advertising();
-    }
+    if (status == ERRCODE_SLE_SUCCESS) { status = clearchain_display_register_server(); }
+    if (status == ERRCODE_SLE_SUCCESS) { status = clearchain_display_start_advertising(); }
     if (status != ERRCODE_SLE_SUCCESS) {
         osal_printk("[CLEAR SLE] server startup failed: 0x%x\r\n", status);
         return NULL;
     }
-
     while (1) {
-        if (g_clearchain_display_ready && g_clearchain_display_replay_pending) {
-            irq_status = osal_irq_lock();
+        uint64_t now = uapi_systick_get_ms();
+        unsigned int irq = osal_irq_lock();
+        uint32_t generation = g_generation, epoch = g_clearchain_display_epoch;
+        bool replay = g_clearchain_display_replay_pending;
+        bool ready = g_clearchain_display_ready;
+        clearchain_display_state_t state = g_state;
+        uint8_t command = replay ? CLEARCHAIN_DISPLAY_CMD_FULL_STATE_SNAPSHOT :
+            (generation != sent_generation ? g_command : CLEARCHAIN_DISPLAY_CMD_HEARTBEAT);
+        if (ready && (replay || generation != sent_generation || now - last_send >= 1000U)) {
             g_clearchain_display_replay_pending = false;
-            message = g_clearchain_display_latest;
-            message.epoch = g_clearchain_display_epoch;
-            bool has_latest = g_clearchain_display_has_latest;
-            osal_irq_restore(irq_status);
-            if (has_latest) {
-                clearchain_display_send(&message);
+            osal_irq_restore(irq);
+            if (clearchain_display_send(command, &state, epoch) == 0) {
+                sent_generation = generation;
+                last_send = now;
+            } else {
+                g_clearchain_display_replay_pending = true;
             }
-        }
-#if defined(CONFIG_CLEARCHAIN_DISPLAY_SLE_LINK_TEST)
-        if (g_clearchain_display_ready && g_clearchain_display_test_pending) {
-            g_clearchain_display_test_pending = false;
-            (void)osal_msleep(2000);
-            if (g_clearchain_display_ready) {
-                (void)clearchain_display_show_progress(1, 60);
-                (void)clearchain_display_show_result(CLEARCHAIN_DISPLAY_RESULT_REJECT, 82);
-            }
-        }
-#endif
-        read_length = sizeof(message);
-        if (osal_msg_queue_read_copy(g_clearchain_display_queue, &message, &read_length, 10) == OSAL_SUCCESS &&
-            read_length == sizeof(message)) {
-            clearchain_display_send(&message);
-        }
+        } else { osal_irq_restore(irq); }
+        osal_msleep(CLEARCHAIN_PROGRESS_INTERVAL_MS);
     }
 }
 
 int clearchain_display_link_init(void)
 {
-    osal_task *task;
-    if (g_clearchain_display_started) {
-        return 0;
-    }
-    if (osal_msg_queue_create("cc_disp_tx", CLEAR_DISPLAY_QUEUE_DEPTH, &g_clearchain_display_queue,
-                              0, sizeof(clearchain_display_tx_message_t)) != OSAL_SUCCESS) {
-        return -1;
-    }
+    if (g_clearchain_display_started) { return 0; }
+    osal_task *task = osal_kthread_create((osal_kthread_handler)clearchain_display_task, NULL,
+                                         "CCDisplaySLE", CLEAR_DISPLAY_TASK_STACK);
+    if (task == NULL) { return -1; }
     g_clearchain_display_started = true;
-    task = osal_kthread_create((osal_kthread_handler)clearchain_display_task, NULL,
-                               "CCDisplaySLE", CLEAR_DISPLAY_TASK_STACK);
-    if (task == NULL) {
-        g_clearchain_display_started = false;
-        (void)osal_msg_queue_delete(g_clearchain_display_queue);
-        return -1;
-    }
     (void)osal_kthread_set_priority(task, CLEAR_DISPLAY_TASK_PRIORITY);
     osal_kfree(task);
     return 0;

@@ -41,6 +41,8 @@ void clearchain_key_start(void);
 
 uint8_t clearchain_key_get_stage(void);
 uint32_t clearchain_key_get_stage_selection_epoch(void);
+/* Debouncing continues during a scan, but new key actions are discarded. */
+void clearchain_key_set_scan_busy(int busy);
 const clearchain_stage_config_t *clearchain_key_get_stage_config(void);
 clearchain_mode_t clearchain_key_get_mode(void);
 /* TODO: waiting for confirmed physical/UI entry into CP mode. */

@@ -47,6 +47,7 @@ static uint8_t g_same_level_count[CLEARCHAIN_STAGE_COUNT] = { 0 };
 static volatile uint8_t g_stage = 1;
 static volatile clearchain_mode_t g_mode = CLEARCHAIN_MODE_STAGE_1;
 static volatile uint32_t g_stage_selection_epoch;
+static volatile int g_scan_busy;
 static int g_key_started = 0;
 
 typedef struct {
@@ -89,6 +90,7 @@ clearchain_key_availability_t clearchain_key_availability(clearchain_key_event_t
 static void clearchain_key_push_event(clearchain_key_event_t event)
 {
     unsigned int irq_status = osal_irq_lock();
+    if (g_scan_busy) { osal_irq_restore(irq_status); return; }
     uint8_t next = (uint8_t)((g_event_head + 1U) % CLEARCHAIN_EVENT_QUEUE_SIZE);
     if (next == g_event_tail) {
         /* Until a UI consumer exists, keep the newest physical key events. */
@@ -234,7 +236,7 @@ static void clearchain_key_task(void *param)
 
     while (1) {
         for (uint8_t i = 0; i < CLEARCHAIN_STAGE_COUNT; i++) {
-            if (clearchain_key_poll(i)) {
+            if (clearchain_key_poll(i) && !g_scan_busy) {
                 g_stage = g_stage_configs[i].stage;
                 g_mode = (clearchain_mode_t)(CLEARCHAIN_MODE_STAGE_1 + i);
                 g_stage_selection_epoch++;
@@ -289,6 +291,14 @@ uint8_t clearchain_key_get_stage(void)
 uint32_t clearchain_key_get_stage_selection_epoch(void)
 {
     return g_stage_selection_epoch;
+}
+
+void clearchain_key_set_scan_busy(int busy)
+{
+    unsigned int irq = osal_irq_lock();
+    g_scan_busy = busy;
+    g_event_tail = g_event_head;
+    osal_irq_restore(irq);
 }
 
 clearchain_mode_t clearchain_key_get_mode(void)

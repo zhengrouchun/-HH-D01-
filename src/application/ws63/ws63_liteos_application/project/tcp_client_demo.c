@@ -34,27 +34,70 @@ Licensed under the Apache License, Version 2.0
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
 #define TAG_MISSING_RESET_ROUNDS 10
 #define RFID_POLL_INTERVAL_MS 500
-#define CLEARCHAIN_S1_BATCH_WINDOW_MS 2500U /* Tune after real shelf timing. */
+#define CLEARCHAIN_S1_BATCH_WINDOW_MS CLEARCHAIN_BATCH_WINDOW_MS
 
 static r200_batch_t g_factory_batch;
 
+static void clearchain_batch_progress(const r200_batch_t *batch, uint32_t elapsed, uint32_t window)
+{
+    /* Window-time progress only; it never claims that all expected EPCs were read. */
+    uint8_t percent = (uint8_t)(((uint64_t)elapsed * 100U) / window);
+    (void)clearchain_display_scan_update(1U, percent, (uint8_t)batch->tag_count,
+                                        (uint16_t)batch->total_samples);
+}
+
 static int clearchain_capture_factory_batch(void)
 {
-    (void)clearchain_display_show_progress(1U, 0U);
-    if (r200_reader_read_batch(&g_factory_batch, CLEARCHAIN_S1_BATCH_WINDOW_MS) != 0 ||
-        g_factory_batch.tag_count == 0U) {
-        osal_printk("S1 batch scan failed or returned no tags\r\n");
+    clearchain_key_set_scan_busy(1);
+    (void)clearchain_display_scan_started(1U);
+    int ret = r200_reader_read_batch_progress(&g_factory_batch, CLEARCHAIN_S1_BATCH_WINDOW_MS,
+                                              clearchain_batch_progress);
+    if (ret != 0 || g_factory_batch.tag_count == 0U) {
+        uint16_t error = ret == 0 ? CLEARCHAIN_ERROR_NO_TAGS :
+            (g_factory_batch.capacity_drops ? CLEARCHAIN_ERROR_CAPACITY : CLEARCHAIN_ERROR_READER);
+        osal_printk("S1 batch scan failed or incomplete; partial data retained in RAM\r\n");
+        (void)clearchain_display_show_error(1U,error);
         clearchain_feedback_post_failed();
-        return -1;
+    } else {
+        osal_printk("S1 batch captured locally: tags=%u samples=%u\r\n",
+                    (unsigned int)g_factory_batch.tag_count, (unsigned int)g_factory_batch.total_samples);
+        osal_printk("S1 upload paused: batch_id source and backend target need confirmation\r\n");
+        (void)clearchain_display_scan_complete(1U,(uint8_t)g_factory_batch.tag_count,
+                                              (uint16_t)g_factory_batch.total_samples);
     }
+    clearchain_key_set_scan_busy(0);
+    return ret;
+}
 
-    (void)clearchain_display_show_progress(1U, 100U);
-    osal_printk("S1 batch captured locally: tags=%u samples=%u\r\n",
-                (unsigned int)g_factory_batch.tag_count,
-                (unsigned int)g_factory_batch.total_samples);
-    osal_printk("S1 upload is paused until the batch_id source and backend target are confirmed\r\n");
-    (void)clearchain_display_show_waiting(1U);
-    return 0;
+static void *clearchain_wifi_task(void *arg)
+{
+    (void)arg;
+    errcode_t ret=wifi_connectTo_AP(WIFI_SSID_NAME,WIFI_SSID_KEY);
+    osal_printk("[CLEAR WIFI] connect returned 0x%x; local scan runs independently\r\n",ret);
+    return NULL;
+}
+
+static void clearchain_start_wifi(void)
+{
+    osal_task *task=osal_kthread_create((osal_kthread_handler)clearchain_wifi_task,NULL,"CCWifi",0x2000);
+    if (task==NULL) { osal_printk("[CLEAR WIFI] task failed; local scan continues\r\n"); return; }
+    (void)osal_kthread_set_priority(task,26); osal_kfree(task);
+}
+
+static void clearchain_consume_ui_keys(void)
+{
+    clearchain_key_event_t event;
+    clearchain_key_availability_t availability;
+    while (clearchain_key_take_event(&event,&availability)) {
+        uint8_t stage=clearchain_key_get_stage();
+        if (event==CLEARCHAIN_KEY_D4_BACK) {
+            (void)clearchain_display_show_waiting(stage);
+        } else {
+            /* No invented History/Image/CP backend requests or menu semantics. */
+            (void)clearchain_display_show_error(stage,availability==CLEARCHAIN_KEY_DISABLED ?
+                CLEARCHAIN_ERROR_DISABLED_KEY : CLEARCHAIN_ERROR_NOT_AVAILABLE);
+        }
+    }
 }
 
 void wifi_tcp_client_demo(void *param)
@@ -90,6 +133,7 @@ void wifi_tcp_client_demo(void *param)
     //如果检测失败
     {
         osal_printk("Stop here: GPIO13/GPIO14 software I2C test failed, ret=0x%x\r\n", tca9555_ret);
+        (void)clearchain_display_show_error(1U,CLEARCHAIN_ERROR_TCA);
         //%x表示：用十六进制方式显示一个整数。
         while (1) 
        //1表示永远成立 ，任务每次睡一秒，然后再次循环，但永远不会离开这个循环。防止继续运行后面的 RFID / Wi-Fi / HTTP 等业务
@@ -112,10 +156,7 @@ void wifi_tcp_client_demo(void *param)
         "Start wifi connect...\r\n"
     );
 
-    wifi_connectTo_AP(
-        WIFI_SSID_NAME,
-        WIFI_SSID_KEY
-    );
+    clearchain_start_wifi();
 /*让 WS63 使用指定的 Wi-Fi 名称和密码去连接无线路由器。
 Wi-Fi 连接到 AP,AP即Access Point，叫做无线接入点。
 */
@@ -124,7 +165,7 @@ Wi-Fi 连接到 AP,AP即Access Point，叫做无线接入点。
     );
 /*return 在这里的意思不是：Wi-Fi 一定连接成功。而是：
 wifi_connectTo_AP() 这个函数执行结束，程序已经从这个函数里面返回了。*/
-    osal_msleep(5000);
+    /* Wi-Fi discovery is independent; do not delay local RFID startup. */
 
 
 
@@ -143,7 +184,11 @@ wifi_connectTo_AP() 这个函数执行结束，程序已经从这个函数里面
     );
 
 
-    r200_reader_init();
+    if (r200_reader_init() != 0) {
+        (void)clearchain_display_show_error(1U,CLEARCHAIN_ERROR_READER);
+        osal_printk("R200 init failed; check UART1 before continuing\r\n");
+        return;
+    }
 
 
     osal_printk(
@@ -189,6 +234,7 @@ while(1)
 //1表示同一张卡还没拿走。
     while(1)//WS63 设备不是扫描一次 RFID 就结束,只要设备不断电,就一直扫描 RFID
     {
+        clearchain_consume_ui_keys();
         uint32_t stage_selection = clearchain_key_get_stage_selection_epoch();
         if (clearchain_key_get_mode() == CLEARCHAIN_MODE_STAGE_1) {
             /* S1 is an explicit whole-batch action. It runs once per physical
@@ -196,6 +242,7 @@ while(1)
             if (stage_selection != handled_stage_selection) {
                 handled_stage_selection = stage_selection;
                 (void)clearchain_capture_factory_batch();
+                handled_stage_selection = clearchain_key_get_stage_selection_epoch();
             }
             osal_msleep(RFID_POLL_INTERVAL_MS);
             continue;
@@ -312,7 +359,13 @@ while(1)
                     /* S2-S5 remain the backend-defined one EPC -> /scan loop.
                      * /scan accumulates a pass and folds batch verification
                      * into the returned tag response. */
-                    scan_led = clearchain_send_scan(chip_uid);
+                    if (!CLEARCHAIN_UPLOAD_ALLOWED) {
+                        osal_printk("[CLEAR HTTP] upload disabled: tag captured locally\r\n");
+                        (void)clearchain_display_scan_complete(stage_config->stage,1U,0U);
+                        scan_led = CLEARCHAIN_SCAN_LED_UNKNOWN;
+                    } else {
+                        scan_led = clearchain_send_scan(chip_uid);
+                    }
                     clearchain_display_result_t display_result = CLEARCHAIN_DISPLAY_RESULT_UNKNOWN;
                     if (scan_led == CLEARCHAIN_SCAN_LED_GREEN) {
                         display_result = CLEARCHAIN_DISPLAY_RESULT_APPROVED;
@@ -321,9 +374,14 @@ while(1)
                     } else if (scan_led == CLEARCHAIN_SCAN_LED_RED) {
                         display_result = CLEARCHAIN_DISPLAY_RESULT_REJECT;
                     }
-                    (void)clearchain_display_show_result(display_result, CLEARCHAIN_RISK_SCORE_UNKNOWN);
+                    if (CLEARCHAIN_UPLOAD_ALLOWED) {
+                        (void)clearchain_display_show_result(display_result, CLEARCHAIN_RISK_SCORE_UNKNOWN);
+                    }
 //调用 clearchain_send_scan() 函数，把当前 RFID 标签的 EPC 也就是 chip_uid，交给它。
-                    if(scan_led == CLEARCHAIN_SCAN_LED_GREEN)
+                    if (!CLEARCHAIN_UPLOAD_ALLOWED) {
+                        /* Local acquisition has no backend verdict; no success/failure alarm. */
+                    }
+                    else if(scan_led == CLEARCHAIN_SCAN_LED_GREEN)
                     {
                         clearchain_feedback_post_success();//执行成功反馈。
                     }

@@ -4,6 +4,19 @@
 #===============================================================================
 set(COMPONENT_NAME "ws63_liteos_app")
 
+set(_clearchain_roles 0)
+foreach(_role CLEARCHAIN_DISPLAY_SLE_OFF CLEARCHAIN_DISPLAY_SLE_SERVER CLEARCHAIN_DISPLAY_SLE_CLIENT)
+    if(CONFIG_${_role})
+        math(EXPR _clearchain_roles "${_clearchain_roles} + 1")
+    endif()
+endforeach()
+if(NOT _clearchain_roles EQUAL 1)
+    message(FATAL_ERROR "ClearChain requires exactly one OFF/Server/Client role")
+endif()
+if((CONFIG_CLEARCHAIN_DISPLAY_SLE_SERVER OR CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT) AND CONFIG_SAMPLE_ENABLE)
+    message(FATAL_ERROR "ClearChain dual-board profiles require SAMPLE_ENABLE=n (no UART bridge or demo entrypoints)")
+endif()
+
 # Server and Client select different source lists, so regenerate CMake when Kconfig changes.
 if(DEFINED KCONFIG_PATH)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KCONFIG_PATH}")
@@ -21,7 +34,6 @@ if(NOT DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_http.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_soft_i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_tca9555.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_oled.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_key.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_led.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_buzzer.c
@@ -41,7 +53,15 @@ endif()
 if(DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     list(APPEND SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client_entry.c)
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client_entry.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_lcd.c)
+    if(NOT CONFIG_SPI_SUPPORT_MASTER)
+        message(FATAL_ERROR "Board B requires SPI_SUPPORT_MASTER=y")
+    endif()
+endif()
+
+if(CONFIG_CLEARCHAIN_DISPLAY_SLE_SERVER OR CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
+    list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_protocol.c)
 endif()
 
 set(PUBLIC_HEADER

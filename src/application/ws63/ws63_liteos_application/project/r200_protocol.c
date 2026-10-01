@@ -2,6 +2,33 @@
 
 #include "osal_debug.h"
 #include <stdio.h>
+#include <string.h>
+
+/* YND-R200 V2.3.3, PDF pages 9-10. Native multi mode is opt-in. */
+int r200_protocol_build_multi_inventory(uint8_t *frame, size_t frame_size,
+                                        size_t *frame_length, uint16_t rounds)
+{
+    uint8_t command[] = {0xAA, 0x00, 0x27, 0x00, 0x03, 0x22, 0, 0, 0, 0xDD};
+    if (frame == NULL || frame_length == NULL || frame_size < sizeof(command) || rounds == 0U) {
+        return -1;
+    }
+    command[6] = (uint8_t)(rounds >> 8);
+    command[7] = (uint8_t)rounds;
+    command[8] = (uint8_t)(0x27U + 0x03U + 0x22U + command[6] + command[7]);
+    memcpy(frame, command, sizeof(command));
+    *frame_length = sizeof(command);
+    return 0;
+}
+
+int r200_protocol_build_stop_inventory(uint8_t *frame, size_t frame_size,
+                                       size_t *frame_length)
+{
+    const uint8_t command[] = {0xAA, 0x00, 0x28, 0x00, 0x00, 0x28, 0xDD};
+    if (frame == NULL || frame_length == NULL || frame_size < sizeof(command)) { return -1; }
+    memcpy(frame, command, sizeof(command));
+    *frame_length = sizeof(command);
+    return 0;
+}
 
 
 /*
@@ -290,7 +317,7 @@ int r200_protocol_parse_inventory(const uint8_t *frame,
      */
 
     if(frame[1] != R200_TYPE_NOTIFY ||
-       frame[2] != R200_COMMAND_INVENTORY ||
+       (frame[2] != R200_COMMAND_INVENTORY && frame[2] != 0x27U) ||
        payload_length < 5)
     {
 

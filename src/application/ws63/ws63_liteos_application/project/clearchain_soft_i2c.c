@@ -16,6 +16,7 @@
 
 static osal_mutex g_clearchain_soft_i2c_mutex = { NULL };
 static volatile uint8_t g_clearchain_soft_i2c_state = CLEARCHAIN_SOFT_I2C_UNINITIALIZED;
+static int g_bus_failed;
 
 static void clearchain_soft_i2c_delay(void)
 {
@@ -36,6 +37,14 @@ static void clearchain_soft_i2c_drive_low(pin_t pin)
 static void clearchain_soft_i2c_scl_high(void)
 {
     clearchain_soft_i2c_release(CLEARCHAIN_SOFT_I2C_SCL_PIN);
+    for (unsigned int i = 0; i < 20U; i++) {
+        if (uapi_gpio_get_val(CLEARCHAIN_SOFT_I2C_SCL_PIN) == GPIO_LEVEL_HIGH) {
+            clearchain_soft_i2c_delay();
+            return;
+        }
+        clearchain_soft_i2c_delay();
+    }
+    g_bus_failed = 1;
     clearchain_soft_i2c_delay();
 }
 
@@ -65,6 +74,7 @@ static uint8_t clearchain_soft_i2c_sda_read(void)
 errcode_t clearchain_soft_i2c_init(void)
 {
     uint8_t initialize_bus = 0U;
+    unsigned int attempts = 0U;
 
     while (!initialize_bus) {
         unsigned int irq_status = osal_irq_lock();
@@ -81,6 +91,7 @@ errcode_t clearchain_soft_i2c_init(void)
         osal_irq_restore(irq_status);
 
         if (!initialize_bus) {
+            if (++attempts >= 100U) { return ERRCODE_FAIL; }
             osal_msleep(1);
         }
     }
@@ -114,7 +125,9 @@ int clearchain_soft_i2c_lock(void)
         return OSAL_FAILURE;
     }
 
-    return osal_mutex_lock(&g_clearchain_soft_i2c_mutex);
+    int ret = osal_mutex_lock_timeout(&g_clearchain_soft_i2c_mutex, 100U);
+    if (ret == OSAL_SUCCESS) { g_bus_failed = 0; }
+    return ret;
 }
 
 void clearchain_soft_i2c_unlock(void)
@@ -126,6 +139,7 @@ void clearchain_soft_i2c_start(void)
 {
     clearchain_soft_i2c_sda_high();
     clearchain_soft_i2c_scl_high();
+    if (clearchain_soft_i2c_sda_read() == 0U) { g_bus_failed = 1; }
     clearchain_soft_i2c_sda_low();
     clearchain_soft_i2c_scl_low();
 }
@@ -142,6 +156,8 @@ uint8_t clearchain_soft_i2c_write_byte(uint8_t value)
     uint8_t mask;
     uint8_t acknowledged;
 
+    if (g_bus_failed) { return CLEARCHAIN_SOFT_I2C_NACK; }
+
     for (mask = 0x80U; mask != 0U; mask >>= 1) {
         if ((value & mask) != 0U) {
             clearchain_soft_i2c_sda_high();
@@ -156,7 +172,7 @@ uint8_t clearchain_soft_i2c_write_byte(uint8_t value)
     clearchain_soft_i2c_scl_high();
     acknowledged = (uint8_t)(clearchain_soft_i2c_sda_read() == 0U);
     clearchain_soft_i2c_scl_low();
-    return acknowledged;
+    return g_bus_failed ? CLEARCHAIN_SOFT_I2C_NACK : acknowledged;
 }
 
 uint8_t clearchain_soft_i2c_read_byte(uint8_t acknowledge)
@@ -185,3 +201,5 @@ uint8_t clearchain_soft_i2c_read_byte(uint8_t acknowledge)
 
     return value;
 }
+
+int clearchain_soft_i2c_failed(void) { return g_bus_failed; }

@@ -11,6 +11,8 @@
 #include "sle_errcode.h"
 #include "sle_ssap_client.h"
 #include "soc_osal.h"
+#include "systick.h"
+#include "clearchain_lcd.h"
 
 #define CLEAR_DISPLAY_NAME "clear_main"
 #define CLEAR_DISPLAY_NAME_COMPLETE 0x0B
@@ -19,14 +21,13 @@
 #define CLEAR_DISPLAY_PROPERTY_UUID 0x2323
 #define CLEAR_DISPLAY_RX_QUEUE_DEPTH 8
 
-typedef struct {
-    uint32_t epoch;
-    uint8_t command;
-    uint8_t first;
-    uint8_t second;
-} clearchain_display_rx_message_t;
-
-static unsigned long g_clearchain_display_rx_queue;
+static clearchain_display_state_t g_latest = {
+    .stage=1, .result=CLEARCHAIN_DISPLAY_RESULT_UNKNOWN, .risk_score=CLEARCHAIN_RISK_SCORE_UNKNOWN
+};
+static volatile bool g_has_sequence;
+static uint32_t g_last_sequence;
+static uint64_t g_last_received;
+static volatile bool g_ever_connected;
 static volatile uint32_t g_clearchain_display_client_epoch;
 static volatile bool g_clearchain_display_client_connected;
 static volatile bool g_clearchain_display_client_ready;
@@ -143,6 +144,8 @@ static void clearchain_display_connection_changed(uint16_t conn_id, const sle_ad
     if (state == SLE_ACB_STATE_CONNECTED) {
         g_clearchain_display_client_conn_id = conn_id;
         g_clearchain_display_client_connected = true;
+        g_ever_connected = true;
+        g_has_sequence = false;
         g_clearchain_display_client_ready = false;
         g_clearchain_display_service_found = false;
         g_clearchain_display_client_property_handle = 0;
@@ -156,6 +159,7 @@ static void clearchain_display_connection_changed(uint16_t conn_id, const sle_ad
         }
     } else if (state == SLE_ACB_STATE_DISCONNECTED) {
         g_clearchain_display_client_connected = false;
+        g_has_sequence = false;
         g_clearchain_display_client_ready = false;
         g_clearchain_display_client_property_handle = 0;
         g_clearchain_display_client_epoch++;
@@ -222,6 +226,12 @@ static void clearchain_display_discovery_complete(uint8_t client_id, uint16_t co
         g_clearchain_display_service_found && g_clearchain_display_client_property_handle != 0) {
         g_clearchain_display_client_ready = true;
         osal_printk("[CLEAR SLE] service discovery complete\r\n");
+        static uint8_t ready[] = {'R', CLEARCHAIN_DISPLAY_PROTOCOL_VERSION};
+        ssapc_write_param_t request = {0};
+        request.handle = g_clearchain_display_client_property_handle;
+        request.type = SSAP_PROPERTY_TYPE_VALUE;
+        request.data = ready; request.data_len = sizeof(ready);
+        (void)ssapc_write_cmd(0, conn_id, &request);
     } else {
         osal_printk("[CLEAR SLE] display property not found\r\n");
     }
@@ -230,96 +240,35 @@ static void clearchain_display_discovery_complete(uint8_t client_id, uint16_t co
 static void clearchain_display_notification(uint8_t client_id, uint16_t conn_id,
                                             ssapc_handle_value_t *value, errcode_t status)
 {
-    clearchain_display_rx_message_t message = {0};
-    const uint8_t *packet;
+    clearchain_display_state_t state;
+    uint32_t sequence;
     uint8_t command;
-    uint8_t payload_length;
     unused(client_id);
-
     if (status != ERRCODE_SLE_SUCCESS || !g_clearchain_display_client_ready || value == NULL ||
-        value->data == NULL || value->handle != g_clearchain_display_client_property_handle ||
-        conn_id != g_clearchain_display_client_conn_id || value->data_len < CLEARCHAIN_DISPLAY_HEADER_SIZE ||
-        value->data_len > CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE) {
-        return;
+        value->handle != g_clearchain_display_client_property_handle ||
+        conn_id != g_clearchain_display_client_conn_id ||
+        clearchain_display_decode(value->data,value->data_len,&command,&sequence,&state) != 0) { return; }
+    unsigned int irq = osal_irq_lock();
+    if (g_has_sequence && !clearchain_display_sequence_newer(sequence,g_last_sequence)) {
+        osal_irq_restore(irq); return;
     }
-    packet = value->data;
-    command = packet[1];
-    payload_length = packet[2];
-    if (packet[0] != CLEARCHAIN_DISPLAY_PROTOCOL_VERSION ||
-        value->data_len != (uint16_t)(CLEARCHAIN_DISPLAY_HEADER_SIZE + payload_length)) {
-        return;
-    }
-    if (command == CLEARCHAIN_DISPLAY_CMD_WAITING || command == CLEARCHAIN_DISPLAY_CMD_STAGE_CHANGED) {
-        if (payload_length != 1 || packet[3] < CLEARCHAIN_DISPLAY_MIN_STAGE ||
-            packet[3] > CLEARCHAIN_DISPLAY_MAX_STAGE) {
-            return;
-        }
-    } else if (command == CLEARCHAIN_DISPLAY_CMD_SCAN_PROGRESS) {
-        if (payload_length != 2 || packet[3] < CLEARCHAIN_DISPLAY_MIN_STAGE ||
-            packet[3] > CLEARCHAIN_DISPLAY_MAX_STAGE || packet[4] > 100) {
-            return;
-        }
-    } else if (command == CLEARCHAIN_DISPLAY_CMD_RESULT) {
-        if (payload_length != 2 || packet[3] > CLEARCHAIN_DISPLAY_RESULT_UNKNOWN ||
-            (packet[4] > 100 && packet[4] != CLEARCHAIN_RISK_SCORE_UNKNOWN)) {
-            return;
-        }
-    } else {
-        return;
-    }
-
-    message.epoch = g_clearchain_display_client_epoch;
-    message.command = command;
-    message.first = packet[3];
-    message.second = payload_length == 2 ? packet[4] : 0;
-    if (osal_msg_queue_write_copy(g_clearchain_display_rx_queue, &message, sizeof(message), 0) != OSAL_SUCCESS) {
-        osal_printk("[CLEAR DISPLAY] receive queue full\r\n");
-    }
-}
-
-static void clearchain_display_print(const clearchain_display_rx_message_t *message)
-{
-    static const char *const result_names[] = {"APPROVED", "MONITOR", "REJECT", "UNKNOWN"};
-    if (message->epoch != g_clearchain_display_client_epoch || !g_clearchain_display_client_connected) {
-        return;
-    }
-    switch (message->command) {
-        case CLEARCHAIN_DISPLAY_CMD_WAITING:
-            osal_printk("[CLEAR DISPLAY] cmd=WAITING stage=%u\r\n", message->first);
-            break;
-        case CLEARCHAIN_DISPLAY_CMD_STAGE_CHANGED:
-            osal_printk("[CLEAR DISPLAY] cmd=STAGE_CHANGED stage=%u\r\n", message->first);
-            break;
-        case CLEARCHAIN_DISPLAY_CMD_SCAN_PROGRESS:
-            osal_printk("[CLEAR DISPLAY] cmd=SCAN_PROGRESS stage=%u percent=%u\r\n",
-                        message->first, message->second);
-            break;
-        case CLEARCHAIN_DISPLAY_CMD_RESULT:
-            if (message->second == CLEARCHAIN_RISK_SCORE_UNKNOWN) {
-                osal_printk("[CLEAR DISPLAY] cmd=RESULT result=%s risk=UNKNOWN\r\n",
-                            result_names[message->first]);
-            } else {
-                osal_printk("[CLEAR DISPLAY] cmd=RESULT result=%s risk=%u\r\n",
-                            result_names[message->first], message->second);
-            }
-            break;
-        default:
-            break;
+    g_latest=state; g_last_sequence=sequence; g_has_sequence=true;
+    g_last_received=uapi_systick_get_ms();
+    osal_irq_restore(irq);
+    if (command!=CLEARCHAIN_DISPLAY_CMD_HEARTBEAT) {
+        osal_printk("[CLEAR DISPLAY] seq=%u cmd=%u stage=%u phase=%u percent=%u tags=%u samples=%u error=%u\r\n",
+                    sequence,command,state.stage,state.phase,state.percent,state.tag_count,state.total_samples,state.error);
     }
 }
 
 void *clearchain_display_client_run(void *arg)
 {
-    clearchain_display_rx_message_t message;
-    unsigned int read_length;
     errcode_t status;
     unused(arg);
 
-    if (osal_msg_queue_create("cc_disp_rx", CLEAR_DISPLAY_RX_QUEUE_DEPTH, &g_clearchain_display_rx_queue,
-                              0, sizeof(message)) != OSAL_SUCCESS) {
-        osal_printk("[CLEAR SLE] receive queue creation failed\r\n");
-        return NULL;
-    }
+    bool lcd_ready = clearchain_lcd_init() == 0;
+    if (!lcd_ready) { osal_printk("[CLEAR LCD] init failed; SLE diagnostics continue\r\n"); }
+    (void)clearchain_lcd_render(&g_latest,CLEARCHAIN_LCD_CONNECTING,false);
     (void)osal_msleep(5000);
     g_clearchain_display_seek_callbacks.sle_enable_cb = clearchain_display_sle_enabled;
     g_clearchain_display_seek_callbacks.seek_result_cb = clearchain_display_seek_result;
@@ -344,14 +293,21 @@ void *clearchain_display_client_run(void *arg)
     }
     if (status != ERRCODE_SLE_SUCCESS) {
         osal_printk("[CLEAR SLE] client startup failed: 0x%x\r\n", status);
-        (void)osal_msg_queue_delete(g_clearchain_display_rx_queue);
         return NULL;
     }
     while (1) {
-        read_length = sizeof(message);
-        if (osal_msg_queue_read_copy(g_clearchain_display_rx_queue, &message, &read_length,
-                                     OSAL_WAIT_FOREVER) == OSAL_SUCCESS && read_length == sizeof(message)) {
-            clearchain_display_print(&message);
+        unsigned int irq=osal_irq_lock();
+        clearchain_display_state_t state=g_latest;
+        bool connected=g_clearchain_display_client_connected;
+        bool fresh=connected && g_has_sequence && uapi_systick_get_ms()-g_last_received < 3500U;
+        clearchain_lcd_connection_t connection=connected ?
+            (fresh?CLEARCHAIN_LCD_CONNECTED:(g_has_sequence?CLEARCHAIN_LCD_STALE:CLEARCHAIN_LCD_CONNECTING)) :
+            (g_ever_connected?CLEARCHAIN_LCD_DISCONNECTED:CLEARCHAIN_LCD_CONNECTING);
+        osal_irq_restore(irq);
+        if (lcd_ready && clearchain_lcd_render(&state,connection,fresh) != 0) {
+            osal_printk("[CLEAR LCD] write failed; retry on next refresh\r\n");
+            osal_msleep(500);
         }
+        osal_msleep(100);
     }
 }

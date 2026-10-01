@@ -14,6 +14,10 @@ int clearchain_display_stage_changed(uint8_t stage);
 /* TODO: waiting for a measured/contracted real progress source. */
 int clearchain_display_show_progress(uint8_t stage, uint8_t percent);
 int clearchain_display_show_result(clearchain_display_result_t result, uint8_t risk_score);
+int clearchain_display_scan_started(uint8_t stage);
+int clearchain_display_scan_update(uint8_t stage, uint8_t percent, uint8_t tags, uint16_t samples);
+int clearchain_display_scan_complete(uint8_t stage, uint8_t tags, uint16_t samples);
+int clearchain_display_show_error(uint8_t stage, uint16_t error);
 #else
 static inline int clearchain_display_link_init(void) { return 0; }
 static inline bool clearchain_display_is_connected(void) { return false; }
@@ -23,6 +27,13 @@ static inline int clearchain_display_show_progress(uint8_t stage, uint8_t percen
 { (void)stage; (void)percent; return 0; }
 static inline int clearchain_display_show_result(clearchain_display_result_t result, uint8_t risk_score)
 { (void)result; (void)risk_score; return 0; }
+static inline int clearchain_display_scan_started(uint8_t stage) { (void)stage; return 0; }
+static inline int clearchain_display_scan_update(uint8_t stage, uint8_t percent, uint8_t tags, uint16_t samples)
+{ (void)stage; (void)percent; (void)tags; (void)samples; return 0; }
+static inline int clearchain_display_scan_complete(uint8_t stage, uint8_t tags, uint16_t samples)
+{ (void)stage; (void)tags; (void)samples; return 0; }
+static inline int clearchain_display_show_error(uint8_t stage, uint16_t error)
+{ (void)stage; (void)error; return 0; }
 #endif
 
 #endif

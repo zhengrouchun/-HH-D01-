@@ -11,6 +11,7 @@
 errcode_t clearchain_soft_i2c_init(void);
 int clearchain_soft_i2c_lock(void);
 void clearchain_soft_i2c_unlock(void);
+int clearchain_soft_i2c_failed(void);
 
 void clearchain_soft_i2c_start(void);
 void clearchain_soft_i2c_stop(void);

@@ -45,7 +45,7 @@ static errcode_t tca9555_write_reg_locked(const clearchain_tca9555_device_t *dev
         return ERRCODE_I2C_ACK_ERR;
     }
     clearchain_soft_i2c_stop();
-    return ERRCODE_SUCC;
+    return clearchain_soft_i2c_failed() ? ERRCODE_FAIL : ERRCODE_SUCC;
 }
 
 static errcode_t tca9555_read_reg_locked(const clearchain_tca9555_device_t *device,
@@ -71,7 +71,7 @@ static errcode_t tca9555_read_reg_locked(const clearchain_tca9555_device_t *devi
 
     *value = clearchain_soft_i2c_read_byte(CLEARCHAIN_SOFT_I2C_NACK);
     clearchain_soft_i2c_stop();
-    return ERRCODE_SUCC;
+    return clearchain_soft_i2c_failed() ? ERRCODE_FAIL : ERRCODE_SUCC;
 }
 
 static errcode_t tca9555_device_init_locked(clearchain_tca9555_device_t *device)

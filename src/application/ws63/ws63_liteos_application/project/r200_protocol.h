@@ -11,6 +11,10 @@
 int r200_protocol_build_inventory(uint8_t *frame,
                                   size_t frame_size,
                                   size_t *frame_length);
+int r200_protocol_build_multi_inventory(uint8_t *frame, size_t frame_size,
+                                        size_t *frame_length, uint16_t rounds);
+int r200_protocol_build_stop_inventory(uint8_t *frame, size_t frame_size,
+                                       size_t *frame_length);
 
 int r200_protocol_parse_inventory(const uint8_t *frame,
                                   size_t frame_length,
