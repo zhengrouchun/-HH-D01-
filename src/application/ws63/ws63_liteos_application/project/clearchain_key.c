@@ -46,6 +46,7 @@ static uint8_t g_stable_level[CLEARCHAIN_STAGE_COUNT] = {
 static uint8_t g_same_level_count[CLEARCHAIN_STAGE_COUNT] = { 0 };
 static volatile uint8_t g_stage = 1;
 static volatile clearchain_mode_t g_mode = CLEARCHAIN_MODE_STAGE_1;
+static volatile uint32_t g_stage_selection_epoch;
 static int g_key_started = 0;
 
 typedef struct {
@@ -236,6 +237,7 @@ static void clearchain_key_task(void *param)
             if (clearchain_key_poll(i)) {
                 g_stage = g_stage_configs[i].stage;
                 g_mode = (clearchain_mode_t)(CLEARCHAIN_MODE_STAGE_1 + i);
+                g_stage_selection_epoch++;
                 (void)clearchain_display_stage_changed(g_stage);
                 osal_printk("Stage button %u pressed: selected stage %u (%s), scanner_id=%s, stage_code=%s\r\n",
                             (uint8_t)(i + 1),
@@ -282,6 +284,11 @@ void clearchain_key_start(void)
 uint8_t clearchain_key_get_stage(void)
 {
     return g_stage;
+}
+
+uint32_t clearchain_key_get_stage_selection_epoch(void)
+{
+    return g_stage_selection_epoch;
 }
 
 clearchain_mode_t clearchain_key_get_mode(void)

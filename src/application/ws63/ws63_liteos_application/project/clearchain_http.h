@@ -2,6 +2,7 @@
 #define CLEARCHAIN_HTTP_H
 
 #include "clearchain_config.h"
+#include "r200_reader.h"
 
 #define CLEARCHAIN_HTTP_HOST SERVER_IP
 #define CLEARCHAIN_HTTP_PORT SERVER_PORT
@@ -42,13 +43,22 @@ typedef struct {
     int risk_score_valid;
 } clearchain_verify_response_t;
 
+typedef struct {
+    unsigned int registered_tags;
+    unsigned int total_samples;
+} clearchain_register_response_t;
+
 /* These known endpoints are available to future business orchestration. */
 int clearchain_send_factory_scan(const char *chip_uid);
+int clearchain_send_register_batch(const char *batch_id, const r200_batch_t *batch,
+                                   clearchain_register_response_t *response);
+int clearchain_send_factory_batch(const char *batch_id, const r200_batch_t *batch,
+                                  clearchain_register_response_t *response);
 int clearchain_send_verify_scan(const char *chip_uid, const char *location,
                                 clearchain_verify_response_t *response);
 clearchain_scan_led_t clearchain_verify_result_to_scan_led(clearchain_verify_result_t result);
 
-/* TODO: waiting for backend contract for register/verify batch response and call order. */
-/* TODO: waiting for a real cross-device batch_id resolution contract. */
+/* /verify_batch is a manual/dashboard endpoint and is not used by the firmware loop. */
+/* TODO: connect the agreed physical batch-label source before automatic upload. */
 
 #endif

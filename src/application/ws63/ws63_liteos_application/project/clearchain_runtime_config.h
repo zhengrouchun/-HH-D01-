@@ -1,0 +1,36 @@
+#ifndef CLEARCHAIN_RUNTIME_CONFIG_H
+#define CLEARCHAIN_RUNTIME_CONFIG_H
+
+/* Explicitly enable only after confirming destination, authentication and batch ID. */
+#ifndef CONFIG_CLEARCHAIN_UPLOAD_ENABLED
+#define CONFIG_CLEARCHAIN_UPLOAD_ENABLED 0
+#endif
+#ifndef CONFIG_CLEARCHAIN_BACKEND_CONFIRMED
+#define CONFIG_CLEARCHAIN_BACKEND_CONFIRMED 0
+#endif
+#define CLEARCHAIN_UPLOAD_ALLOWED \
+    (CONFIG_CLEARCHAIN_UPLOAD_ENABLED && CONFIG_CLEARCHAIN_BACKEND_CONFIRMED)
+
+#define CLEARCHAIN_BATCH_WINDOW_MS 2500U
+#define CLEARCHAIN_MAX_TAGS 32U
+#define CLEARCHAIN_MAX_SAMPLES_PER_TAG 4U
+#define CLEARCHAIN_PROGRESS_INTERVAL_MS 100U
+#define CLEARCHAIN_R200_FRAME_TIMEOUT_MS 800U
+#define CLEARCHAIN_R200_DRAIN_TIMEOUT_MS 50U
+#define CLEARCHAIN_R200_SCAN_GAP_MS 30U
+
+/* Optional native 0x27 mode requires comparison against 0x22 on the actual module. */
+#ifndef CLEARCHAIN_R200_NATIVE_MULTI
+#define CLEARCHAIN_R200_NATIVE_MULTI 0
+#endif
+
+#if CLEARCHAIN_MAX_TAGS < 32 || CLEARCHAIN_MAX_TAGS > 255
+#error "ClearChain tag capacity must be 32..255"
+#endif
+#if CLEARCHAIN_MAX_SAMPLES_PER_TAG < 1 || CLEARCHAIN_MAX_SAMPLES_PER_TAG > 255
+#error "RSSI sample capacity must fit uint8_t"
+#endif
+#if CLEARCHAIN_BATCH_WINDOW_MS == 0
+#error "Batch window must be nonzero"
+#endif
+#endif

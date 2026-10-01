@@ -9,6 +9,7 @@
 #include "clearchain_config.h"
 #include "clearchain_http.h"
 #include "clearchain_key.h"
+#include "clearchain_runtime_config.h"
 
 static void clearchain_print_redirect_location(const char *response)
 {
@@ -141,17 +142,27 @@ static int clearchain_recv_http_response(int fd)
 
     if (status_code >= 200 && status_code < 300) {
         if (clearchain_json_string_field_equals(response, "color", "RED") ||
-            clearchain_json_string_field_equals(response, "status", "INSPECTION REQUIRED")) {
+            clearchain_json_string_field_equals(response, "status", "RED") ||
+            clearchain_json_string_field_equals(response, "status", "INSPECTION REQUIRED") ||
+            clearchain_json_string_field_equals(response, "status", "ALERT") ||
+            clearchain_json_string_field_equals(response, "result", "ALERT")) {
             return CLEARCHAIN_SCAN_LED_RED;
         }
 
         if (clearchain_json_string_field_equals(response, "color", "ORANGE") ||
-            clearchain_json_string_field_equals(response, "status", "VERIFY")) {
+            clearchain_json_string_field_equals(response, "color", "YELLOW") ||
+            clearchain_json_string_field_equals(response, "status", "YELLOW") ||
+            clearchain_json_string_field_equals(response, "status", "VERIFY") ||
+            clearchain_json_string_field_equals(response, "status", "MONITOR") ||
+            clearchain_json_string_field_equals(response, "result", "MONITOR")) {
             return CLEARCHAIN_SCAN_LED_ORANGE;
         }
 
         if (clearchain_json_string_field_equals(response, "color", "GREEN") ||
-            clearchain_json_string_field_equals(response, "status", "APPROVED")) {
+            clearchain_json_string_field_equals(response, "status", "GREEN") ||
+            clearchain_json_string_field_equals(response, "status", "APPROVED") ||
+            clearchain_json_string_field_equals(response, "status", "AUTHORIZED") ||
+            clearchain_json_string_field_equals(response, "result", "AUTHORIZED")) {
             return CLEARCHAIN_SCAN_LED_GREEN;
         }
 
@@ -174,6 +185,12 @@ static int clearchain_connect_http_server(void)
     int fd;
     struct sockaddr_in server_addr = {0};
     unsigned long ip_addr;
+
+    /* Gate every endpoint before socket creation or DNS resolution. */
+    if (!CLEARCHAIN_UPLOAD_ALLOWED) {
+        printf("[CLEAR HTTP] upload disabled; destination is not confirmed\r\n");
+        return -1;
+    }
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -336,22 +353,65 @@ static int clearchain_json_escape(const char *input, char *output, size_t output
     return 0;
 }
 
-/* Transport shared by the two confirmed endpoints; batch orchestration waits
- * for the backend contract. response receives the raw HTTP response. */
+static int clearchain_send_all(int fd, const char *data, size_t length)
+{
+    size_t sent = 0U;
+    while (sent < length) {
+        int ret = send(fd, data + sent, (int)(length - sent), 0);
+        if (ret <= 0) {
+            return -1;
+        }
+        sent += (size_t)ret;
+    }
+    return 0;
+}
+
+static int clearchain_receive_raw_response(int fd, const char *path,
+                                           char *response, size_t response_size)
+{
+    size_t received = 0U;
+    int status_code = -1;
+
+    if (response == NULL || response_size < 16U) {
+        return -1;
+    }
+    response[0] = '\0';
+    for (;;) {
+        int ret;
+        if (received + 1U >= response_size) {
+            return -1;
+        }
+        ret = recv(fd, response + received, (int)(response_size - received - 1U), 0);
+        if (ret == 0) {
+            break;
+        }
+        if (ret < 0) {
+            return -1;
+        }
+        received += (size_t)ret;
+        response[received] = '\0';
+    }
+    if (sscanf(response, "HTTP/%*d.%*d %d", &status_code) != 1 ||
+        status_code < 200 || status_code >= 300) {
+        printf("HTTP %s failed: status=%d\r\n", path, status_code);
+        return -1;
+    }
+    return 0;
+}
+
+/* Transport shared by the small JSON endpoints. response receives the raw
+ * HTTP response, including headers. */
 static int clearchain_post_json(const char *path, const char *body,
                                 char *response, size_t response_size)
 {
-    char request[768];
+    char header[384];
     char host_header[96];
-    size_t received = 0U;
     int fd;
     int written;
-    int status_code = -1;
 
     if (path == NULL || body == NULL || response == NULL || response_size < 16U) {
         return -1;
     }
-    response[0] = '\0';
     if (CLEARCHAIN_HTTP_PORT == 80) {
         written = snprintf(host_header, sizeof(host_header), "%s", CLEARCHAIN_HTTP_HOST);
     } else {
@@ -361,49 +421,29 @@ static int clearchain_post_json(const char *path, const char *body,
     if (written < 0 || (size_t)written >= sizeof(host_header)) {
         return -1;
     }
-    written = snprintf(request, sizeof(request),
+    written = snprintf(header, sizeof(header),
                        "POST %s HTTP/1.1\r\n"
                        "Host: %s\r\n"
                        "Content-Type: application/json\r\n"
                        "ngrok-skip-browser-warning: true\r\n"
                        "Connection: close\r\n"
-                       "Content-Length: %u\r\n\r\n%s",
-                       path, host_header, (unsigned int)strlen(body), body);
-    if (written < 0 || (size_t)written >= sizeof(request)) {
+                       "Content-Length: %u\r\n\r\n",
+                       path, host_header, (unsigned int)strlen(body));
+    if (written < 0 || (size_t)written >= sizeof(header)) {
         return -1;
     }
     fd = clearchain_connect_http_server();
     if (fd < 0) {
         return -1;
     }
-    if (TCP_SendData(fd, request) < 0) {
+    if (clearchain_send_all(fd, header, (size_t)written) != 0 ||
+        clearchain_send_all(fd, body, strlen(body)) != 0) {
         TCP_CloseClient(fd);
         return -1;
     }
-    for (;;) {
-        int ret;
-        if (received + 1U >= response_size) {
-            TCP_CloseClient(fd);
-            return -1;
-        }
-        ret = recv(fd, response + received, (int)(response_size - received - 1U), 0);
-        if (ret == 0) {
-            break;
-        }
-        if (ret < 0) {
-            TCP_CloseClient(fd);
-            return -1;
-        }
-        received += (size_t)ret;
-        response[received] = '\0';
-    }
+    written = clearchain_receive_raw_response(fd, path, response, response_size);
     TCP_CloseClient(fd);
-    if (sscanf(response, "HTTP/%*d.%*d %d", &status_code) != 1 ||
-        status_code < 200 || status_code >= 300) {
-        printf("HTTP %s failed: status=%d\r\n", path, status_code);
-        return -1;
-    }
-    return 0;
+    return written;
 }
 
 int clearchain_send_factory_scan(const char *chip_uid)
@@ -422,6 +462,179 @@ int clearchain_send_factory_scan(const char *chip_uid)
         return -1;
     }
     return clearchain_post_json("/factory_scan", body, response, sizeof(response));
+}
+
+static int clearchain_json_uint_field(const char *json, const char *field,
+                                      unsigned int *value)
+{
+    char key[48];
+    const char *p;
+    if (json == NULL || field == NULL || value == NULL) {
+        return -1;
+    }
+    (void)snprintf(key, sizeof(key), "\"%s\"", field);
+    p = strstr(json, key);
+    if (p == NULL || (p = strchr(p + strlen(key), ':')) == NULL ||
+        sscanf(p + 1, " %u", value) != 1) {
+        return -1;
+    }
+    return 0;
+}
+
+int clearchain_send_register_batch(const char *batch_id, const r200_batch_t *batch,
+                                   clearchain_register_response_t *result)
+{
+    static const char suffix[] = "]}";
+    char escaped_batch_id[160];
+    char escaped_uid[2U * R200_TAG_ID_MAX_LEN];
+    char prefix[224];
+    char item[224];
+    char header[384];
+    char host_header[96];
+    char response[1024];
+    const char *json;
+    size_t content_length;
+    size_t emitted = 0U;
+    int fd;
+    int written;
+
+    if (batch_id == NULL || batch_id[0] == '\0' || batch == NULL || result == NULL ||
+        batch->tag_count == 0U || batch->tag_count > R200_MAX_TAGS || batch->total_samples == 0U ||
+        clearchain_json_escape(batch_id, escaped_batch_id, sizeof(escaped_batch_id)) != 0) {
+        return -1;
+    }
+    result->registered_tags = 0U;
+    result->total_samples = 0U;
+    written = snprintf(prefix, sizeof(prefix),
+                       "{\"batch_id\":\"%s\",\"readings\":[", escaped_batch_id);
+    if (written < 0 || (size_t)written >= sizeof(prefix)) {
+        return -1;
+    }
+    content_length = (size_t)written + strlen(suffix);
+    for (size_t i = 0; i < batch->tag_count; i++) {
+        const r200_tag_samples_t *tag = &batch->tags[i];
+        if (tag->sample_count == 0U || tag->sample_count > R200_MAX_SAMPLES_PER_TAG ||
+            memchr(tag->chip_uid, '\0', sizeof(tag->chip_uid)) == NULL ||
+            clearchain_json_escape(tag->chip_uid, escaped_uid, sizeof(escaped_uid)) != 0) {
+            return -1;
+        }
+        for (uint8_t sample = 0U; sample < tag->sample_count; sample++) {
+            written = snprintf(item, sizeof(item),
+                               "%s{\"chip_uid\":\"%s\",\"rssi_dbm\":%d}",
+                               emitted == 0U ? "" : ",", escaped_uid,
+                               (int)tag->rssi_dbm[sample]);
+            if (written < 0 || (size_t)written >= sizeof(item)) {
+                return -1;
+            }
+            content_length += (size_t)written;
+            emitted++;
+        }
+    }
+    if (emitted != batch->total_samples) {
+        return -1;
+    }
+    if (CLEARCHAIN_HTTP_PORT == 80) {
+        written = snprintf(host_header, sizeof(host_header), "%s", CLEARCHAIN_HTTP_HOST);
+    } else {
+        written = snprintf(host_header, sizeof(host_header), "%s:%d",
+                           CLEARCHAIN_HTTP_HOST, CLEARCHAIN_HTTP_PORT);
+    }
+    if (written < 0 || (size_t)written >= sizeof(host_header)) {
+        return -1;
+    }
+    written = snprintf(header, sizeof(header),
+                       "POST /register_batch HTTP/1.1\r\n"
+                       "Host: %s\r\nContent-Type: application/json\r\n"
+                       "ngrok-skip-browser-warning: true\r\n"
+                       "Connection: close\r\nContent-Length: %u\r\n\r\n",
+                       host_header, (unsigned int)content_length);
+    if (written < 0 || (size_t)written >= sizeof(header)) {
+        return -1;
+    }
+    fd = clearchain_connect_http_server();
+    if (fd < 0 || clearchain_send_all(fd, header, (size_t)written) != 0 ||
+        clearchain_send_all(fd, prefix, strlen(prefix)) != 0) {
+        if (fd >= 0) {
+            TCP_CloseClient(fd);
+        }
+        return -1;
+    }
+    emitted = 0U;
+    for (size_t i = 0; i < batch->tag_count; i++) {
+        const r200_tag_samples_t *tag = &batch->tags[i];
+        if (clearchain_json_escape(tag->chip_uid, escaped_uid, sizeof(escaped_uid)) != 0) {
+            TCP_CloseClient(fd);
+            return -1;
+        }
+        for (uint8_t sample = 0U; sample < tag->sample_count; sample++) {
+            written = snprintf(item, sizeof(item),
+                               "%s{\"chip_uid\":\"%s\",\"rssi_dbm\":%d}",
+                               emitted == 0U ? "" : ",", escaped_uid,
+                               (int)tag->rssi_dbm[sample]);
+            if (written < 0 || (size_t)written >= sizeof(item) ||
+                clearchain_send_all(fd, item, (size_t)written) != 0) {
+                TCP_CloseClient(fd);
+                return -1;
+            }
+            emitted++;
+        }
+    }
+    if (clearchain_send_all(fd, suffix, strlen(suffix)) != 0 ||
+        clearchain_receive_raw_response(fd, "/register_batch", response,
+                                        sizeof(response)) != 0) {
+        TCP_CloseClient(fd);
+        return -1;
+    }
+    TCP_CloseClient(fd);
+    json = strstr(response, "\r\n\r\n");
+    if (json == NULL) {
+        return -1;
+    }
+    json += 4;
+    if (!clearchain_json_string_field_equals(json, "batch_id", batch_id) ||
+        clearchain_json_uint_field(json, "registered_tags", &result->registered_tags) != 0 ||
+        clearchain_json_uint_field(json, "total_samples", &result->total_samples) != 0 ||
+        result->registered_tags != batch->tag_count ||
+        result->total_samples != batch->total_samples) {
+        printf("register_batch response mismatch\r\n");
+        return -1;
+    }
+    return 0;
+}
+
+int clearchain_send_factory_batch(const char *batch_id, const r200_batch_t *batch,
+                                  clearchain_register_response_t *result)
+{
+    if (batch_id == NULL || batch_id[0] == '\0' || batch == NULL || result == NULL ||
+        batch->tag_count == 0U || batch->tag_count > R200_MAX_TAGS) {
+        return -1;
+    }
+
+    /* Validate the entire batch before any endpoint can create records. */
+    size_t samples = 0U;
+    for (size_t i = 0U; i < batch->tag_count; i++) {
+        if (batch->tags[i].sample_count == 0U ||
+            batch->tags[i].sample_count > R200_MAX_SAMPLES_PER_TAG ||
+            batch->tags[i].chip_uid[0] == '\0' ||
+            memchr(batch->tags[i].chip_uid, '\0', R200_TAG_ID_MAX_LEN) == NULL) {
+            return -1;
+        }
+        samples += batch->tags[i].sample_count;
+    }
+    if (samples != batch->total_samples) {
+        return -1;
+    }
+
+    /* Factory enrollment is one request per unique EPC. Repeated RSSI samples
+     * are intentionally preserved only in the final /register_batch body. */
+    for (size_t i = 0U; i < batch->tag_count; i++) {
+        if (clearchain_send_factory_scan(batch->tags[i].chip_uid) != 0) {
+            printf("factory batch stopped at tag %u/%u\r\n",
+                   (unsigned int)(i + 1U), (unsigned int)batch->tag_count);
+            return -1;
+        }
+    }
+    return clearchain_send_register_batch(batch_id, batch, result);
 }
 
 int clearchain_send_verify_scan(const char *chip_uid, const char *location,

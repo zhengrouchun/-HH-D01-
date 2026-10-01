@@ -5,6 +5,7 @@
 #include "pinctrl.h"
 #include "soc_osal.h"
 #include "uart.h"
+#include "systick.h"
 
 #define R200_UART_BUS          1
 #define R200_UART_TX_PIN       S_MGPIO15
@@ -23,6 +24,8 @@ static uint8_t g_r200_uart_ring[R200_UART_RING_BUFFER_SIZE];
 static volatile uint16_t g_r200_uart_ring_head = 0U;
 static volatile uint16_t g_r200_uart_ring_tail = 0U;
 static volatile uint32_t g_r200_uart_dropped_bytes = 0U;
+static volatile uint32_t g_r200_uart_bad_frames = 0U;
+static volatile uint32_t g_r200_uart_error_events = 0U;
 static osal_event g_r200_uart_rx_event = { 0 };
 static int g_r200_uart_rx_event_ready = 0;
 static uart_buffer_config_t g_r200_uart_buffer_config = {
@@ -70,7 +73,11 @@ static void r200_uart_rx_isr(const void *buffer, uint16_t length, bool error)
     const uint8_t *bytes = (const uint8_t *)buffer;
     uint16_t written = 0U;
 
-    if (bytes == NULL || length == 0U || error) {
+    if (error) {
+        g_r200_uart_error_events++;
+        return;
+    }
+    if (bytes == NULL || length == 0U) {
         return;
     }
 
@@ -132,6 +139,7 @@ static int r200_uart_extract_frame(uint8_t *frame, size_t frame_size, size_t *fr
                          (size_t)r200_uart_ring_peek_locked(4U);
         total_length = payload_length + R200_FRAME_BASE_SIZE;
         if (total_length > frame_size || total_length >= R200_UART_RING_BUFFER_SIZE) {
+            g_r200_uart_bad_frames++;
             r200_uart_ring_drop_locked(1U);
             osal_irq_restore(irq_status);
             continue;
@@ -157,6 +165,7 @@ static int r200_uart_extract_frame(uint8_t *frame, size_t frame_size, size_t *fr
         }
 
         irq_status = osal_irq_lock();
+        g_r200_uart_bad_frames++;
         r200_uart_ring_drop_locked(1U);
         osal_irq_restore(irq_status);
     }
@@ -227,12 +236,12 @@ void r200_uart_prepare_receive(void)
     irq_status = osal_irq_lock();
     g_r200_uart_ring_head = 0U;
     g_r200_uart_ring_tail = 0U;
-    g_r200_uart_dropped_bytes = 0U;
     osal_irq_restore(irq_status);
     if (g_r200_uart_rx_event_ready) {
         (void)osal_event_clear(&g_r200_uart_rx_event, R200_UART_RX_EVENT);
     }
     if (r200_uart_register_rx_callback() != 0) {
+        g_r200_uart_error_events++;
         osal_printk("R200 UART RX interrupt re-register failed\r\n");
     }
 }
@@ -245,12 +254,18 @@ int r200_uart_wait_frame(uint8_t *frame, size_t frame_size,
         return -1;
     }
 
+    uint64_t start_ms = uapi_systick_get_ms();
     for (;;) {
         if (r200_uart_extract_frame(frame, frame_size, frame_length) == 1) {
             return 0;
         }
 
-        if (osal_event_read(&g_r200_uart_rx_event, R200_UART_RX_EVENT, timeout_ms,
+        uint64_t elapsed_ms = uapi_systick_get_ms() - start_ms;
+        if (elapsed_ms >= timeout_ms) {
+            return -1;
+        }
+        if (osal_event_read(&g_r200_uart_rx_event, R200_UART_RX_EVENT,
+                            timeout_ms - (uint32_t)elapsed_ms,
                             OSAL_WAITMODE_AND | OSAL_WAITMODE_CLR) == OSAL_FAILURE) {
             return -1;
         }
@@ -260,4 +275,13 @@ int r200_uart_wait_frame(uint8_t *frame, size_t frame_size,
 void r200_uart_flush(void)
 {
     r200_uart_prepare_receive();
+}
+
+void r200_uart_get_diagnostics(uint32_t *dropped, uint32_t *bad_frames, uint32_t *errors)
+{
+    unsigned int irq = osal_irq_lock();
+    if (dropped != NULL) { *dropped = g_r200_uart_dropped_bytes; }
+    if (bad_frames != NULL) { *bad_frames = g_r200_uart_bad_frames; }
+    if (errors != NULL) { *errors = g_r200_uart_error_events; }
+    osal_irq_restore(irq);
 }

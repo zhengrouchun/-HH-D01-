@@ -16,7 +16,7 @@
 #define R200_PARSE_ATTEMPTS          4
 #define R200_LOG_EVERY_N             50U
 #define R200_LOG_EMPTY_SCAN          0
-#define R200_READER_VERSION          "r200-reader-first-rssi-batch-20260928"
+#define R200_READER_VERSION          "r200-reader-multi-rssi-batch-20260930"
 
 static void r200_print_hex(const char *prefix, const uint8_t *data, size_t length)
 {
@@ -51,22 +51,30 @@ static int r200_reader_read_frame(uint8_t *frame, size_t frame_size,
     return -1;
 }
 
-static int r200_reader_store_first(r200_batch_t *batch, const char *epc, int8_t rssi_dbm)
+static int r200_reader_store_sample(r200_batch_t *batch, const char *epc, int8_t rssi_dbm)
 {
     for (size_t i = 0; i < batch->tag_count; i++) {
         if (strcmp(batch->tags[i].chip_uid, epc) == 0) {
-            return 0;
+            r200_tag_samples_t *tag = &batch->tags[i];
+            if (tag->sample_count >= R200_MAX_SAMPLES_PER_TAG) {
+                return 0;
+            }
+            tag->rssi_dbm[tag->sample_count++] = rssi_dbm;
+            batch->total_samples++;
+            return 1;
         }
     }
     if (batch->tag_count >= R200_MAX_TAGS) {
         return 0;
     }
 
-    r200_tag_reading_t *tag = &batch->tags[batch->tag_count++];
+    r200_tag_samples_t *tag = &batch->tags[batch->tag_count++];
     (void)strncpy(tag->chip_uid, epc, sizeof(tag->chip_uid) - 1U);
     tag->chip_uid[sizeof(tag->chip_uid) - 1U] = '\0';
-    tag->rssi_dbm = rssi_dbm;
-    return 1;
+    tag->rssi_dbm[0] = rssi_dbm;
+    tag->sample_count = 1U;
+    batch->total_samples++;
+    return 2;
 }
 
 int r200_reader_init(void)
@@ -180,7 +188,7 @@ int r200_reader_read_batch(r200_batch_t *batch, uint32_t timeout_ms)
                 (uint32_t)start_ms, timeout_ms);
 
     while (uapi_systick_get_ms() - start_ms < timeout_ms &&
-           batch->tag_count < R200_MAX_TAGS) {
+           batch->total_samples < R200_MAX_TAGS * R200_MAX_SAMPLES_PER_TAG) {
         r200_uart_prepare_receive();
         if (r200_uart_write(command, command_length) != 0) {
             status = -1;
@@ -202,23 +210,28 @@ int r200_reader_read_batch(r200_batch_t *batch, uint32_t timeout_ms)
             if (parse_ret != 0) {
                 continue;
             }
-            if (r200_reader_store_first(batch, epc, rssi_dbm) != 0) {
+            int stored = r200_reader_store_sample(batch, epc, rssi_dbm);
+            if (stored == 2) {
                 osal_printk("[BATCH] new tag %u EPC=%s RSSI=%d elapsed=%ums\r\n",
                             (unsigned int)batch->tag_count, epc, (int)rssi_dbm,
                             (uint32_t)(uapi_systick_get_ms() - start_ms));
+            } else if (stored == 1) {
+                osal_printk("[BATCH] sample %u EPC=%s RSSI=%d\r\n",
+                            (unsigned int)batch->total_samples, epc, (int)rssi_dbm);
             }
-            if (batch->tag_count >= R200_MAX_TAGS) {
+            if (batch->total_samples >= R200_MAX_TAGS * R200_MAX_SAMPLES_PER_TAG) {
                 break;
             }
         }
-        if (batch->tag_count < R200_MAX_TAGS &&
+        if (batch->total_samples < R200_MAX_TAGS * R200_MAX_SAMPLES_PER_TAG &&
             uapi_systick_get_ms() - start_ms < timeout_ms) {
             osal_msleep(R200_SCAN_GAP_MS);
         }
     }
 
-    osal_printk("[BATCH] done count=%u elapsed=%ums status=%d\r\n",
+    osal_printk("[BATCH] done tags=%u samples=%u elapsed=%ums status=%d\r\n",
                 (unsigned int)batch->tag_count,
+                (unsigned int)batch->total_samples,
                 (uint32_t)(uapi_systick_get_ms() - start_ms), status);
     return status;
 }

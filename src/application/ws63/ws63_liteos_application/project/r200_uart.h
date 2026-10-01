@@ -15,6 +15,8 @@ int r200_uart_write(const uint8_t *data, size_t length);
  * in task context.
  */
 void r200_uart_prepare_receive(void);
+/* Monotonic counters; caller may subtract snapshots across a scan window. */
+void r200_uart_get_diagnostics(uint32_t *dropped, uint32_t *bad_frames, uint32_t *errors);
 int r200_uart_wait_frame(uint8_t *frame, size_t frame_size,
                          size_t *frame_length, uint32_t timeout_ms);
 void r200_uart_flush(void);

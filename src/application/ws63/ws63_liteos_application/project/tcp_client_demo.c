@@ -34,6 +34,28 @@ Licensed under the Apache License, Version 2.0
 #define WIFI_TCP_CLIENT_TASK_STACK_SIZE 0x2000
 #define TAG_MISSING_RESET_ROUNDS 10
 #define RFID_POLL_INTERVAL_MS 500
+#define CLEARCHAIN_S1_BATCH_WINDOW_MS 2500U /* Tune after real shelf timing. */
+
+static r200_batch_t g_factory_batch;
+
+static int clearchain_capture_factory_batch(void)
+{
+    (void)clearchain_display_show_progress(1U, 0U);
+    if (r200_reader_read_batch(&g_factory_batch, CLEARCHAIN_S1_BATCH_WINDOW_MS) != 0 ||
+        g_factory_batch.tag_count == 0U) {
+        osal_printk("S1 batch scan failed or returned no tags\r\n");
+        clearchain_feedback_post_failed();
+        return -1;
+    }
+
+    (void)clearchain_display_show_progress(1U, 100U);
+    osal_printk("S1 batch captured locally: tags=%u samples=%u\r\n",
+                (unsigned int)g_factory_batch.tag_count,
+                (unsigned int)g_factory_batch.total_samples);
+    osal_printk("S1 upload is paused until the batch_id source and backend target are confirmed\r\n");
+    (void)clearchain_display_show_waiting(1U);
+    return 0;
+}
 
 void wifi_tcp_client_demo(void *param)
 {
@@ -130,6 +152,7 @@ wifi_connectTo_AP() 这个函数执行结束，程序已经从这个函数里面
 
     clearchain_key_start();
     (void)clearchain_display_show_waiting(clearchain_key_get_stage());
+    uint32_t handled_stage_selection = clearchain_key_get_stage_selection_epoch();
 
     /*
      * 保存上一次扫描到的chip_uid
@@ -166,6 +189,18 @@ while(1)
 //1表示同一张卡还没拿走。
     while(1)//WS63 设备不是扫描一次 RFID 就结束,只要设备不断电,就一直扫描 RFID
     {
+        uint32_t stage_selection = clearchain_key_get_stage_selection_epoch();
+        if (clearchain_key_get_mode() == CLEARCHAIN_MODE_STAGE_1) {
+            /* S1 is an explicit whole-batch action. It runs once per physical
+             * S1 key press and never falls through to the per-tag /scan path. */
+            if (stage_selection != handled_stage_selection) {
+                handled_stage_selection = stage_selection;
+                (void)clearchain_capture_factory_batch();
+            }
+            osal_msleep(RFID_POLL_INTERVAL_MS);
+            continue;
+        }
+        handled_stage_selection = stage_selection;
         /*
          * 当前读取到的RFID EPC
          *
@@ -185,6 +220,11 @@ while(1)
             //让 R200 读一次 RFID 标签，如果读到了 EPC，就把 EPC 放进 chip_uid 这个数组里。
         //返回 0=成功读取 EPC
             {
+            if (clearchain_key_get_mode() == CLEARCHAIN_MODE_STAGE_1) {
+                /* The stage may have changed while the blocking R200 read was
+                 * in progress. Let the next loop run the S1 batch workflow. */
+                continue;
+            }
             missing_tag_rounds = 0;
 //连续多少轮没有读到 RFID 标签。
             osal_printk(
@@ -269,9 +309,9 @@ while(1)
     CLEARCHAIN_SCAN_LED_UNKNOWN = 3
 } clearchain_scan_led_t;*/
                 {
-                    /* TODO: waiting for backend contract. This preserved
-                     * single-tag /scan path is for existing tests. Do not
-                     * infer the S1 factory/register_batch call order here. */
+                    /* S2-S5 remain the backend-defined one EPC -> /scan loop.
+                     * /scan accumulates a pass and folds batch verification
+                     * into the returned tag response. */
                     scan_led = clearchain_send_scan(chip_uid);
                     clearchain_display_result_t display_result = CLEARCHAIN_DISPLAY_RESULT_UNKNOWN;
                     if (scan_led == CLEARCHAIN_SCAN_LED_GREEN) {
