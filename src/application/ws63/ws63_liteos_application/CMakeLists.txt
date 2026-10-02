@@ -4,6 +4,7 @@
 #===============================================================================
 set(COMPONENT_NAME "ws63_liteos_app")
 
+if(TARGET_COMMAND STREQUAL "ws63-liteos-app")
 set(_clearchain_roles 0)
 foreach(_role CLEARCHAIN_DISPLAY_SLE_OFF CLEARCHAIN_DISPLAY_SLE_SERVER CLEARCHAIN_DISPLAY_SLE_CLIENT)
     if(CONFIG_${_role})
@@ -15,6 +16,7 @@ if(NOT _clearchain_roles EQUAL 1)
 endif()
 if((CONFIG_CLEARCHAIN_DISPLAY_SLE_SERVER OR CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT) AND CONFIG_SAMPLE_ENABLE)
     message(FATAL_ERROR "ClearChain dual-board profiles require SAMPLE_ENABLE=n (no UART bridge or demo entrypoints)")
+endif()
 endif()
 
 # Server and Client select different source lists, so regenerate CMake when Kconfig changes.

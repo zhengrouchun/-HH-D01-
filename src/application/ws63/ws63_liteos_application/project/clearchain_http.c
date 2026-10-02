@@ -605,8 +605,10 @@ int clearchain_send_register_batch(const char *batch_id, const r200_batch_t *bat
 int clearchain_send_factory_batch(const char *batch_id, const r200_batch_t *batch,
                                   clearchain_register_response_t *result)
 {
+    char escaped_batch_id[160];
     if (batch_id == NULL || batch_id[0] == '\0' || batch == NULL || result == NULL ||
-        batch->tag_count == 0U || batch->tag_count > R200_MAX_TAGS) {
+        batch->tag_count == 0U || batch->tag_count > R200_MAX_TAGS ||
+        clearchain_json_escape(batch_id, escaped_batch_id, sizeof(escaped_batch_id)) != 0) {
         return -1;
     }
 

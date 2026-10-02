@@ -14,7 +14,7 @@
 #define YELLOW 0xFFE0U
 #define RED 0xF800U
 #define BLUE 0x051FU
-/* 640 bytes, one RGB565 row. No full-screen or double framebuffer. */
+/* 960 bytes, one landscape RGB565 row. No full-screen or double framebuffer. */
 static uint8_t g_line[CLEARCHAIN_LCD_WIDTH * 2U];
 static bool g_ready;
 static bool g_previous_valid;
@@ -58,10 +58,10 @@ static int fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
 /* A fixed-width text band erases old longer text without clearing the screen. */
 static int text_band(uint16_t y, const char *text, uint16_t color, uint8_t scale)
 {
-    if (text == NULL || scale < 1U || scale > 4U || window(8,y,304,8U*scale) != 0) { return -1; }
+    if (text == NULL || scale < 1U || scale > 4U || window(8,y,CLEARCHAIN_LCD_WIDTH-16U,8U*scale) != 0) { return -1; }
     size_t length = strlen(text);
     for (uint16_t row=0; row<8U*scale; row++) {
-        for (uint16_t x=0; x<304; x++) {
+        for (uint16_t x=0; x<CLEARCHAIN_LCD_WIDTH-16U; x++) {
             size_t ci = x/(6U*scale);
             uint8_t col=(x/scale)%6U, bit=row/scale;
             uint8_t c=ci<length ? (uint8_t)text[ci] : ' ';
@@ -69,7 +69,7 @@ static int text_band(uint16_t y, const char *text, uint16_t color, uint8_t scale
             uint16_t pixel = col<5U && (g_cc_font[c-32U][col] & (1U<<bit)) ? color : BG;
             g_line[x*2]=(uint8_t)(pixel>>8); g_line[x*2+1]=(uint8_t)pixel;
         }
-        if (write_bytes(true,g_line,608U) != 0) { return -1; }
+        if (write_bytes(true,g_line,(CLEARCHAIN_LCD_WIDTH-16U)*2U) != 0) { return -1; }
     }
     return 0;
 }
@@ -94,7 +94,7 @@ int clearchain_lcd_init(void)
     (void)uapi_gpio_set_val(CLEARCHAIN_LCD_RESET,GPIO_LEVEL_LOW); osal_msleep(100);
     (void)uapi_gpio_set_val(CLEARCHAIN_LCD_RESET,GPIO_LEVEL_HIGH); osal_msleep(120);
     if (command(0x11,NULL,0) != 0) { return -1; } osal_msleep(120);
-    /* Module setup follows the local HiHope ST7796 reference; 320x480 RGB565. */
+    /* Module setup follows the local HiHope ST7796 reference; landscape RGB565. */
     static const uint8_t setup[][17] = {
         {0x36,1,CLEARCHAIN_LCD_MADCTL},{0x3A,1,0x55},{0xF0,1,0xC3},{0xF0,1,0x96},
         {0xB4,1,0x02},{0xB7,1,0xC6},{0xC0,2,0xC0,0x00},{0xC1,1,0x13},
@@ -108,10 +108,10 @@ int clearchain_lcd_init(void)
     }
     if (command(0x21,NULL,0) != 0 || command(0x29,NULL,0) != 0) { return -1; }
     osal_msleep(20);
-    if (fill(0,0,320,480,BG) != 0 || text_band(12,"CLEARCHAIN",WHITE,3) != 0 ||
-        text_band(56,"BOARD B / ST7796",BLUE,2) != 0) { return -1; }
+    if (fill(0,0,CLEARCHAIN_LCD_WIDTH,CLEARCHAIN_LCD_HEIGHT,BG) != 0 || text_band(12,"CLEARCHAIN",WHITE,3) != 0 ||
+        text_band(42,"BOARD B / ST7796 LANDSCAPE",BLUE,2) != 0) { return -1; }
     g_ready=true; g_previous_valid=false;
-    osal_printk("[CLEAR LCD] init 320x480 RGB565 SPI0 2MHz mode0; row_buffer=640\r\n");
+    osal_printk("[CLEAR LCD] init 480x320 RGB565 SPI0 2MHz mode0; row_buffer=960\r\n");
     return 0;
 }
 int clearchain_lcd_render(const clearchain_display_state_t *s, clearchain_lcd_connection_t connection, bool fresh)
@@ -122,9 +122,9 @@ int clearchain_lcd_render(const clearchain_display_state_t *s, clearchain_lcd_co
     char line[48]; int ret=0;
     if (!g_ready || s==NULL || s->stage<1 || s->stage>5 || connection>CLEARCHAIN_LCD_STALE) { return -1; }
     bool all=!g_previous_valid || connection!=g_previous_connection || fresh!=g_previous_fresh;
-    if (all) { ret |= text_band(94,links[connection],connection==CLEARCHAIN_LCD_CONNECTED?GREEN:YELLOW,2); }
+    if (all) { ret |= text_band(70,links[connection],connection==CLEARCHAIN_LCD_CONNECTED?GREEN:YELLOW,2); }
     if (all || s->stage!=g_previous.stage) {
-        snprintf(line,sizeof(line),"S%u  %s",s->stage,stages[s->stage]); ret |= text_band(132,line,WHITE,2);
+        snprintf(line,sizeof(line),"S%u  %s",s->stage,stages[s->stage]); ret |= text_band(98,line,WHITE,2);
     }
     if (all || s->phase!=g_previous.phase || s->error!=g_previous.error || s->result!=g_previous.result) {
         const char *label="WAITING FOR SCAN"; uint16_t color=WHITE;
@@ -138,28 +138,28 @@ int clearchain_lcd_render(const clearchain_display_state_t *s, clearchain_lcd_co
             else if (s->result==CLEARCHAIN_DISPLAY_RESULT_REJECT) { label="REJECT"; color=RED; }
             else { label="RESULT UNKNOWN"; color=YELLOW; }
         }
-        ret |= text_band(174,label,color,2);
+        ret |= text_band(126,label,color,2);
     }
     if (all || s->percent!=g_previous.percent || s->phase!=g_previous.phase) {
         snprintf(line,sizeof(line),"WINDOW TIME: %u%%",fresh?s->percent:0U);
-        ret |= text_band(216,line,WHITE,2);
-        uint16_t w=(fresh?s->percent:0U)*3U;
-        if (w) { ret |= fill(10,246,w,16,BLUE); }
-        if (w<300U) { ret |= fill(10+w,246,300-w,16,0x2104U); }
+        ret |= text_band(156,line,WHITE,2);
+        uint16_t w=(uint16_t)((fresh?s->percent:0U)*(CLEARCHAIN_LCD_WIDTH-20U)/100U);
+        if (w) { ret |= fill(10,180,w,12,BLUE); }
+        if (w<CLEARCHAIN_LCD_WIDTH-20U) { ret |= fill(10+w,180,CLEARCHAIN_LCD_WIDTH-20U-w,12,0x2104U); }
     }
     if (all || s->tag_count!=g_previous.tag_count || s->total_samples!=g_previous.total_samples) {
         snprintf(line,sizeof(line),"TAGS %u   SAMPLES %u",s->tag_count,s->total_samples);
-        ret |= text_band(286,line,WHITE,2);
+        ret |= text_band(208,line,WHITE,2);
     }
     if (all || s->risk_score!=g_previous.risk_score || s->flags!=g_previous.flags) {
         if (!fresh || s->risk_score==CLEARCHAIN_RISK_SCORE_UNKNOWN) { snprintf(line,sizeof(line),"RISK: UNKNOWN"); }
         else { snprintf(line,sizeof(line),"RISK: %u%%",s->risk_score); }
-        ret |= text_band(326,line,WHITE,2);
-        ret |= text_band(370,(s->flags&CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED)?"UPLOAD DISABLED":"UPLOAD CONFIGURED",YELLOW,2);
+        ret |= text_band(238,line,WHITE,2);
+        ret |= text_band(264,(s->flags&CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED)?"UPLOAD DISABLED":"UPLOAD CONFIGURED",YELLOW,2);
     }
     if (all) {
-        ret |= text_band(416,"TAG COMPLETENESS UNKNOWN",YELLOW,2);
-        ret |= text_band(452,"LCD LINK / NO PIXEL TRANSFER",BLUE,1);
+        ret |= text_band(292,"TAG COMPLETENESS UNKNOWN",YELLOW,1);
+        ret |= text_band(308,"LCD LINK / NO PIXEL TRANSFER",BLUE,1);
     }
     if (ret==0) { g_previous=*s; g_previous_connection=connection; g_previous_fresh=fresh; g_previous_valid=true; }
     else { g_previous_valid=false; }

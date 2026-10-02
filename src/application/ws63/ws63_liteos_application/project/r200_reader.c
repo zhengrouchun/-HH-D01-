@@ -210,6 +210,7 @@ int r200_reader_read_batch_progress(r200_batch_t *batch, uint32_t timeout_ms,
             need_command = 0;
         }
         uint64_t now = uapi_systick_get_ms();
+        if (now - start_ms >= timeout_ms) { break; }
         uint32_t remaining = timeout_ms - (uint32_t)(now - start_ms);
         uint32_t slice = remaining < 50U ? remaining : 50U;
         if (r200_uart_wait_frame(response, sizeof(response), &response_length, slice) == 0) {
@@ -253,7 +254,7 @@ int r200_reader_read_batch_progress(r200_batch_t *batch, uint32_t timeout_ms,
     batch->uart_dropped_bytes = dropped_after - dropped_before;
     batch->uart_error_events = errors_after - errors_before;
     batch->rejected_frames += bad_after - bad_before;
-    if (batch->capacity_drops || batch->uart_dropped_bytes || batch->uart_error_events) { status = -1; }
+    if (batch->capacity_drops || batch->uart_dropped_bytes || batch->uart_error_events || batch->rejected_frames) { status = -1; }
     if (progress != NULL) {
         uint32_t elapsed = (uint32_t)(uapi_systick_get_ms() - start_ms);
         progress(batch, elapsed < timeout_ms ? elapsed : timeout_ms, timeout_ms);

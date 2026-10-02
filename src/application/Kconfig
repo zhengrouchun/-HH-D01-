@@ -31,6 +31,16 @@ config CLEARCHAIN_DISPLAY_SLE_LINK_TEST
     default n
     depends on CLEARCHAIN_DISPLAY_SLE_SERVER
 
+config CLEARCHAIN_UPLOAD_ENABLED
+    bool "Enable real ClearChain RFID upload"
+    default n
+    depends on !CLEARCHAIN_DISPLAY_SLE_CLIENT
+
+config CLEARCHAIN_BACKEND_CONFIRMED
+    bool "Backend destination and authentication confirmed"
+    default n
+    depends on CLEARCHAIN_UPLOAD_ENABLED
+
 config SUPPORT_SLE_PERIPHERAL
     bool
     default y if CLEARCHAIN_DISPLAY_SLE_SERVER
