@@ -90,7 +90,7 @@ int r200_reader_init(void)
     return ret;
 }
 
-int r200_reader_read_epc(char *epc, size_t epc_size)
+int r200_reader_read_one(char *epc, size_t epc_size, int8_t *rssi_dbm)
 {
     uint8_t command[R200_MAX_FRAME_SIZE];
     uint8_t response[R200_MAX_FRAME_SIZE];
@@ -102,7 +102,7 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
     int debug_this_time;
     uint32_t elapsed = 0;
 
-    if (epc == NULL || epc_size < R200_TAG_ID_MAX_LEN) {
+    if (epc == NULL || epc_size < R200_TAG_ID_MAX_LEN || rssi_dbm == NULL) {
         return -1;
     }
     if (r200_protocol_build_inventory(command, sizeof(command),
@@ -139,6 +139,7 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
                                                        epc, epc_size, &rssi);
             if (parse_ret == 0) {
                 osal_printk("R200 EPC: %s\r\n", epc);
+                *rssi_dbm = rssi;
                 no_response_count = 0;
                 return 0;
             }
@@ -159,6 +160,12 @@ int r200_reader_read_epc(char *epc, size_t epc_size)
         osal_printk("R200 scan window timeout\r\n");
     }
     return -1;
+}
+
+int r200_reader_read_epc(char *epc, size_t epc_size)
+{
+    int8_t ignored_rssi;
+    return r200_reader_read_one(epc, epc_size, &ignored_rssi);
 }
 
 void r200_reader_batch_reset(r200_batch_t *batch)

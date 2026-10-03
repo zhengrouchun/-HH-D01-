@@ -114,6 +114,17 @@ int clearchain_lcd_init(void)
     osal_printk("[CLEAR LCD] init 480x320 RGB565 SPI0 2MHz mode0; row_buffer=960\r\n");
     return 0;
 }
+int clearchain_lcd_flush_rgb565(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
+                               const uint8_t *pixels)
+{
+    if (!g_ready || pixels == NULL || window(x, y, width, height) != 0) { return -1; }
+    for (uint16_t row = 0; row < height; ++row) {
+        if (write_bytes(true, pixels + (size_t)row * width * 2U, (uint32_t)width * 2U) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
 int clearchain_lcd_render(const clearchain_display_state_t *s, clearchain_lcd_connection_t connection, bool fresh)
 {
     static const char *const links[]={"CONNECTING","CONNECTED","DISCONNECTED","STATE TIMEOUT"};

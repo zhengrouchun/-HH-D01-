@@ -73,6 +73,9 @@ static int g_extra_ready;
 clearchain_key_availability_t clearchain_key_availability(clearchain_key_event_t event,
                                                            clearchain_mode_t mode)
 {
+    if (event >= CLEARCHAIN_KEY_STAGE_1 && event <= CLEARCHAIN_KEY_STAGE_5) {
+        return CLEARCHAIN_KEY_ENABLED;
+    }
     if (mode < CLEARCHAIN_MODE_STAGE_1 || mode > CLEARCHAIN_MODE_CP ||
         event < CLEARCHAIN_KEY_UP || event > CLEARCHAIN_KEY_D4_BACK) {
         return CLEARCHAIN_KEY_DISABLED;
@@ -237,6 +240,10 @@ static void clearchain_key_task(void *param)
     while (1) {
         for (uint8_t i = 0; i < CLEARCHAIN_STAGE_COUNT; i++) {
             if (clearchain_key_poll(i) && !g_scan_busy) {
+#ifdef CONFIG_CLEARCHAIN_DEVICE_API
+                clearchain_key_push_event((clearchain_key_event_t)(CLEARCHAIN_KEY_STAGE_1 + i));
+                osal_printk("Stage button %u pressed: request backend selection\r\n", (unsigned int)(i + 1U));
+#else
                 g_stage = g_stage_configs[i].stage;
                 g_mode = (clearchain_mode_t)(CLEARCHAIN_MODE_STAGE_1 + i);
                 g_stage_selection_epoch++;
@@ -247,6 +254,7 @@ static void clearchain_key_task(void *param)
                             g_stage_configs[i].name,
                             g_stage_configs[i].scanner_id,
                             g_stage_configs[i].stage_code);
+#endif
             }
         }
         clearchain_extra_keys_poll();
@@ -304,6 +312,18 @@ void clearchain_key_set_scan_busy(int busy)
 clearchain_mode_t clearchain_key_get_mode(void)
 {
     return g_mode;
+}
+
+void clearchain_key_set_remote_mode(clearchain_mode_t mode)
+{
+    unsigned int irq;
+    if (mode < CLEARCHAIN_MODE_NONE || mode > CLEARCHAIN_MODE_CP) { return; }
+    irq = osal_irq_lock();
+    g_mode = mode;
+    if (mode >= CLEARCHAIN_MODE_STAGE_1 && mode <= CLEARCHAIN_MODE_STAGE_5) {
+        g_stage = (uint8_t)mode;
+    }
+    osal_irq_restore(irq);
 }
 
 const clearchain_stage_config_t *clearchain_key_get_stage_config(void)

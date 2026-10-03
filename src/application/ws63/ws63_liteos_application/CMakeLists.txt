@@ -32,7 +32,7 @@ set(SOURCES
 
 if(NOT DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     list(APPEND SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/project/tcp_client_demo.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_state.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_http.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_soft_i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_tca9555.c
@@ -46,6 +46,13 @@ if(NOT DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     ${CMAKE_CURRENT_SOURCE_DIR}/project/include/my_wifi_api.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/include/my_wifi_tcp.c
     )
+    if(CONFIG_CLEARCHAIN_DEVICE_API)
+        list(APPEND SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_app.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_http.c)
+    else()
+        list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/project/tcp_client_demo.c)
+    endif()
 endif()
 
 if(DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_SERVER)
@@ -56,7 +63,8 @@ if(DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     list(APPEND SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client.c
         ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client_entry.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_lcd.c)
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_lcd.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_ui.c)
     if(NOT CONFIG_SPI_SUPPORT_MASTER)
         message(FATAL_ERROR "Board B requires SPI_SUPPORT_MASTER=y")
     endif()

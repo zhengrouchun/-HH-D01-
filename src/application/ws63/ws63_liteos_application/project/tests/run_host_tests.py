@@ -33,3 +33,14 @@ result=subprocess.run([str(exe)],check=True,capture_output=True,text=True,env=en
 print(result.stdout,end='')
 with (OUT/'results.txt').open('a',encoding='utf8') as log:
     log.write(result.stdout)
+exe=OUT/'device_contract_tests.exe'
+cmd=[str(GCC),'-std=c99','-Wall','-Wextra','-Werror','-I'+str(TESTS/'stubs'),
+     '-I'+str(PROJECT),'-I'+str(SDK/'open_source/cjson/cjson'),
+     str(TESTS/'test_device_contract.c'),str(PROJECT/'clearchain_device_state.c'),
+     str(PROJECT/'clearchain_device_http.c'),str(SDK/'open_source/cjson/cjson/cJSON.c'),
+     '-o',str(exe)]
+subprocess.run(cmd,check=True,env=env)
+result=subprocess.run([str(exe)],check=True,capture_output=True,text=True,env=env)
+print(result.stdout,end='')
+with (OUT/'results.txt').open('a',encoding='utf8') as log:
+    log.write(result.stdout)

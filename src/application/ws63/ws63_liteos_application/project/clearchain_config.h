@@ -26,6 +26,24 @@
 // HTTP接口
 #define SERVER_PATH "/scan"
 
+/* New device API. Override the address in the Board A API build profile. */
+#ifndef CONFIG_CLEARCHAIN_DEVICE_HOST
+#define CONFIG_CLEARCHAIN_DEVICE_HOST "192.168.4.1"
+#endif
+#ifndef CONFIG_CLEARCHAIN_DEVICE_PORT
+#define CONFIG_CLEARCHAIN_DEVICE_PORT 5000
+#endif
+#define CLEARCHAIN_DEVICE_HOST CONFIG_CLEARCHAIN_DEVICE_HOST
+#define CLEARCHAIN_DEVICE_PORT CONFIG_CLEARCHAIN_DEVICE_PORT
+
+/* The documented stage codes live in one place. */
+#define CLEARCHAIN_ACCESS_S1 "PROD-7f2a"
+#define CLEARCHAIN_ACCESS_S2 "FDA-91xq"
+#define CLEARCHAIN_ACCESS_S3 "WARE-3kd8"
+#define CLEARCHAIN_ACCESS_S4 "PUB-c72m"
+#define CLEARCHAIN_ACCESS_S5 "PRIV-a9z1"
+#define CLEARCHAIN_ACCESS_CP "VERIFY-q4m8"
+
 
 // =============================
 // ClearChain扫描点配置

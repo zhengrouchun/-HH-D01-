@@ -12,7 +12,7 @@
 #include "sle_ssap_client.h"
 #include "soc_osal.h"
 #include "systick.h"
-#include "clearchain_lcd.h"
+#include "clearchain_ui.h"
 
 #define CLEAR_DISPLAY_NAME "clear_main"
 #define CLEAR_DISPLAY_NAME_COMPLETE 0x0B
@@ -22,7 +22,7 @@
 #define CLEAR_DISPLAY_RX_QUEUE_DEPTH 8
 
 static clearchain_display_state_t g_latest = {
-    .stage=1, .result=CLEARCHAIN_DISPLAY_RESULT_UNKNOWN, .risk_score=CLEARCHAIN_RISK_SCORE_UNKNOWN
+    .stage=0, .result=CLEARCHAIN_DISPLAY_RESULT_UNKNOWN, .risk_score=CLEARCHAIN_RISK_SCORE_UNKNOWN
 };
 static volatile bool g_has_sequence;
 static uint32_t g_last_sequence;
@@ -264,11 +264,12 @@ static void clearchain_display_notification(uint8_t client_id, uint16_t conn_id,
 void *clearchain_display_client_run(void *arg)
 {
     errcode_t status;
+    uint64_t last_ui_tick = uapi_systick_get_ms();
     unused(arg);
 
-    bool lcd_ready = clearchain_lcd_init() == 0;
+    bool lcd_ready = clearchain_ui_init() == 0;
     if (!lcd_ready) { osal_printk("[CLEAR LCD] init failed; SLE diagnostics continue\r\n"); }
-    (void)clearchain_lcd_render(&g_latest,CLEARCHAIN_LCD_CONNECTING,false);
+    clearchain_ui_render(&g_latest,CLEARCHAIN_LCD_CONNECTING,false);
     (void)osal_msleep(5000);
     g_clearchain_display_seek_callbacks.sle_enable_cb = clearchain_display_sle_enabled;
     g_clearchain_display_seek_callbacks.seek_result_cb = clearchain_display_seek_result;
@@ -304,10 +305,12 @@ void *clearchain_display_client_run(void *arg)
             (fresh?CLEARCHAIN_LCD_CONNECTED:(g_has_sequence?CLEARCHAIN_LCD_STALE:CLEARCHAIN_LCD_CONNECTING)) :
             (g_ever_connected?CLEARCHAIN_LCD_DISCONNECTED:CLEARCHAIN_LCD_CONNECTING);
         osal_irq_restore(irq);
-        if (lcd_ready && clearchain_lcd_render(&state,connection,fresh) != 0) {
-            osal_printk("[CLEAR LCD] write failed; retry on next refresh\r\n");
-            osal_msleep(500);
+        if (lcd_ready) {
+            clearchain_ui_render(&state,connection,fresh);
+            uint64_t now = uapi_systick_get_ms();
+            clearchain_ui_tick((unsigned int)(now - last_ui_tick));
+            last_ui_tick = now;
         }
-        osal_msleep(100);
+        osal_msleep(50);
     }
 }

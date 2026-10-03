@@ -31,6 +31,7 @@ typedef void (*r200_batch_progress_fn)(const r200_batch_t *batch,
 
 int r200_reader_init(void);
 int r200_reader_read_epc(char *epc, size_t epc_size);
+int r200_reader_read_one(char *epc, size_t epc_size, int8_t *rssi_dbm);
 void r200_reader_batch_reset(r200_batch_t *batch);
 
 /* Caller supplies a test/configuration window pending hardware timing.

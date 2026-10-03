@@ -58,7 +58,7 @@ static void clearchain_display_set_uuid(uint16_t short_uuid, sle_uuid_t *uuid)
 
 static bool clearchain_display_valid_stage(uint8_t stage)
 {
-    return stage >= CLEARCHAIN_DISPLAY_MIN_STAGE && stage <= CLEARCHAIN_DISPLAY_MAX_STAGE;
+    return stage <= CLEARCHAIN_DISPLAY_MAX_STAGE;
 }
 
 /* One-slot coalescing mailbox. Producers only copy state under an IRQ lock. */
@@ -119,6 +119,45 @@ int clearchain_display_show_result(clearchain_display_result_t result, uint8_t r
     uint8_t stage = g_state.stage;
     osal_irq_restore(irq);
     return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_RESULT, stage, 0, 0, 0, result, risk_score, 0);
+}
+
+int clearchain_display_publish_device_state(const clearchain_device_state_t *state)
+{
+    unsigned int irq;
+    if (state == NULL || state->mode > CLEARCHAIN_DEVICE_MODE_CP || state->phase > CLEARCHAIN_PHASE_ERROR ||
+        state->tags_read < 0 || state->tags_read > 255 || state->tags_expected > 65534 ||
+        state->risk_percent < 0 || state->risk_percent > 100) { return -1; }
+    irq = osal_irq_lock();
+    g_state.stage = (uint8_t)state->mode;
+    g_state.phase = (uint8_t)state->phase;
+    g_state.percent = state->progress_percent < 0 ? 0U : (uint8_t)state->progress_percent;
+    g_state.tag_count = (uint8_t)state->tags_read;
+    g_state.total_samples = 0U;
+    g_state.tags_expected = state->tags_expected < 0 ? UINT16_MAX : (uint16_t)state->tags_expected;
+    g_state.result = state->screen_status == CLEARCHAIN_STATUS_APPROVED ? CLEARCHAIN_DISPLAY_RESULT_APPROVED :
+        (state->screen_status == CLEARCHAIN_STATUS_MONITOR ? CLEARCHAIN_DISPLAY_RESULT_MONITOR :
+        (state->screen_status == CLEARCHAIN_STATUS_REJECT ? CLEARCHAIN_DISPLAY_RESULT_REJECT :
+        CLEARCHAIN_DISPLAY_RESULT_UNKNOWN));
+    g_state.risk_score = (uint8_t)state->risk_percent;
+    g_state.error = state->phase == CLEARCHAIN_PHASE_ERROR ? CLEARCHAIN_ERROR_BACKEND : CLEARCHAIN_ERROR_NONE;
+    g_state.flags = (CLEARCHAIN_UPLOAD_ALLOWED ? 0U : CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED) |
+        (state->progress_percent < 0 ? CLEARCHAIN_DISPLAY_FLAG_PROGRESS_UNKNOWN : 0U);
+    g_state.state_version = state->state_version;
+    (void)strncpy(g_state.message, state->message, sizeof(g_state.message) - 1U);
+    g_state.message[sizeof(g_state.message) - 1U] = '\0';
+    g_command = CLEARCHAIN_DISPLAY_CMD_FULL_STATE_SNAPSHOT;
+    g_generation++;
+    osal_irq_restore(irq);
+    return 0;
+}
+
+void clearchain_display_set_backend_offline(int offline)
+{
+    unsigned int irq = osal_irq_lock();
+    if (offline) { g_state.flags |= CLEARCHAIN_DISPLAY_FLAG_BACKEND_OFFLINE; }
+    else { g_state.flags &= (uint8_t)~CLEARCHAIN_DISPLAY_FLAG_BACKEND_OFFLINE; }
+    g_generation++;
+    osal_irq_restore(irq);
 }
 bool clearchain_display_is_connected(void) { return g_clearchain_display_connected; }
 

@@ -37,22 +37,27 @@ static void progress(const r200_batch_t *batch,uint32_t elapsed,uint32_t window)
 
 static void test_display(void)
 {
-    uint8_t packet[24], type; uint32_t seq; clearchain_display_state_t decoded;
+    uint8_t packet[CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE], type; uint32_t seq; clearchain_display_state_t decoded;
     clearchain_display_state_t state={.stage=4,.phase=1,.percent=67,.tag_count=11,
-        .total_samples=44,.result=3,.risk_score=255,.flags=3};
+        .total_samples=44,.result=3,.risk_score=255,.flags=3,
+        .state_version=42,.tags_expected=25,.message="Capturing signal data"};
     for (uint8_t cmd=1;cmd<=8;cmd++) {
-        assert(clearchain_display_encode(packet,sizeof(packet),cmd,0x12345678,&state)==24);
-        assert(clearchain_display_decode(packet,24,&type,&seq,&decoded)==0);
+        assert(clearchain_display_encode(packet,sizeof(packet),cmd,0x12345678,&state)==CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE);
+        assert(clearchain_display_decode(packet,sizeof(packet),&type,&seq,&decoded)==0);
         assert(type==cmd && seq==0x12345678 && decoded.total_samples==44 && decoded.risk_score==255);
-        for (size_t n=0;n<24;n++) { assert(clearchain_display_decode(packet,n,&type,&seq,&decoded)<0); }
-        for (unsigned int i=0;i<24;i++) for (unsigned int bit=0;bit<8;bit++) {
+        assert(decoded.state_version==42 && decoded.tags_expected==25 &&
+               strcmp(decoded.message,"Capturing signal data")==0);
+        for (size_t n=0;n<sizeof(packet);n++) {
+            assert(clearchain_display_decode(packet,n,&type,&seq,&decoded)<0);
+        }
+        for (unsigned int i=0;i<sizeof(packet);i++) for (unsigned int bit=0;bit<8;bit++) {
             packet[i]^=(uint8_t)(1U<<bit);
-            assert(clearchain_display_decode(packet,24,&type,&seq,&decoded)<0);
+            assert(clearchain_display_decode(packet,sizeof(packet),&type,&seq,&decoded)<0);
             packet[i]^=(uint8_t)(1U<<bit);
         }
     }
-    state.percent=101; assert(clearchain_display_encode(packet,24,1,0,&state)<0);
-    state.percent=0; state.risk_score=101; assert(clearchain_display_encode(packet,24,1,0,&state)<0);
+    state.percent=101; assert(clearchain_display_encode(packet,sizeof(packet),1,0,&state)<0);
+    state.percent=0; state.risk_score=101; assert(clearchain_display_encode(packet,sizeof(packet),1,0,&state)<0);
     assert(clearchain_display_sequence_newer(1,0xFFFFFFFF));
     assert(!clearchain_display_sequence_newer(7,7));
     assert(!clearchain_display_sequence_newer(6,7));

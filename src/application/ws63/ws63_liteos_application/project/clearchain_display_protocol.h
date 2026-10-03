@@ -4,16 +4,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CLEARCHAIN_DISPLAY_PROTOCOL_VERSION 2U
+#define CLEARCHAIN_DISPLAY_PROTOCOL_VERSION 3U
 #define CLEARCHAIN_DISPLAY_HEADER_SIZE 10U
-#define CLEARCHAIN_DISPLAY_PAYLOAD_SIZE 12U
-#define CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE 24U
-#define CLEARCHAIN_DISPLAY_MIN_STAGE 1U
-#define CLEARCHAIN_DISPLAY_MAX_STAGE 5U
+#define CLEARCHAIN_DISPLAY_MESSAGE_SIZE 48U
+#define CLEARCHAIN_DISPLAY_PAYLOAD_SIZE 66U
+#define CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE 78U
+#define CLEARCHAIN_DISPLAY_MIN_STAGE 0U
+#define CLEARCHAIN_DISPLAY_MAX_STAGE 6U
 #define CLEARCHAIN_RISK_SCORE_UNKNOWN 0xFFU
 #define CLEARCHAIN_DISPLAY_FLAG_TIME_PROGRESS 1U
 #define CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED 2U
 #define CLEARCHAIN_DISPLAY_FLAG_INCOMPLETE 4U
+#define CLEARCHAIN_DISPLAY_FLAG_PROGRESS_UNKNOWN 8U
+#define CLEARCHAIN_DISPLAY_FLAG_BACKEND_OFFLINE 16U
 
 /* CC magic, version, type, seq LE32, length LE16, full state, CRC16 LE. */
 typedef enum {
@@ -36,10 +39,11 @@ typedef enum {
 } clearchain_display_result_t;
 
 typedef enum {
-    CLEARCHAIN_DISPLAY_WAITING = 0,
-    CLEARCHAIN_DISPLAY_SCANNING = 1,
-    CLEARCHAIN_DISPLAY_FINISHED = 2,
-    CLEARCHAIN_DISPLAY_ERROR = 3
+    CLEARCHAIN_DISPLAY_IDLE = 0,
+    CLEARCHAIN_DISPLAY_WAITING = 1,
+    CLEARCHAIN_DISPLAY_SCANNING = 2,
+    CLEARCHAIN_DISPLAY_FINISHED = 3,
+    CLEARCHAIN_DISPLAY_ERROR = 4
 } clearchain_display_phase_t;
 typedef enum {
     CLEARCHAIN_ERROR_NONE = 0,
@@ -55,6 +59,9 @@ typedef struct {
     uint8_t stage, phase, percent, tag_count;
     uint16_t total_samples, error;
     uint8_t result, risk_score, flags;
+    uint32_t state_version;
+    uint16_t tags_expected; /* UINT16_MAX means JSON null. */
+    char message[CLEARCHAIN_DISPLAY_MESSAGE_SIZE];
 } clearchain_display_state_t;
 
 /* Every event carries full state: coalescing cannot lose a required delta.

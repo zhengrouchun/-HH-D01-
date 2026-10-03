@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 typedef enum {
+    CLEARCHAIN_MODE_NONE = 0,
     CLEARCHAIN_MODE_STAGE_1 = 1,
     CLEARCHAIN_MODE_STAGE_2,
     CLEARCHAIN_MODE_STAGE_3,
@@ -28,7 +29,12 @@ typedef enum {
     CLEARCHAIN_KEY_D1_HISTORY,
     CLEARCHAIN_KEY_D2_VIEW_ORIGINAL,
     CLEARCHAIN_KEY_D3_VIEW_IMAGE,
-    CLEARCHAIN_KEY_D4_BACK
+    CLEARCHAIN_KEY_D4_BACK,
+    CLEARCHAIN_KEY_STAGE_1,
+    CLEARCHAIN_KEY_STAGE_2,
+    CLEARCHAIN_KEY_STAGE_3,
+    CLEARCHAIN_KEY_STAGE_4,
+    CLEARCHAIN_KEY_STAGE_5
 } clearchain_key_event_t;
 
 typedef enum {
@@ -45,6 +51,8 @@ uint32_t clearchain_key_get_stage_selection_epoch(void);
 void clearchain_key_set_scan_busy(int busy);
 const clearchain_stage_config_t *clearchain_key_get_stage_config(void);
 clearchain_mode_t clearchain_key_get_mode(void);
+/* In device-API mode, only a backend response may commit the selected mode. */
+void clearchain_key_set_remote_mode(clearchain_mode_t mode);
 /* TODO: waiting for confirmed physical/UI entry into CP mode. */
 clearchain_key_availability_t clearchain_key_availability(clearchain_key_event_t event,
                                                            clearchain_mode_t mode);

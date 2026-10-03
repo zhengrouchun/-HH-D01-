@@ -17,8 +17,25 @@ config CLEARCHAIN_DISPLAY_SLE_CLIENT
     bool "ClearChain display SLE client (Board B)"
     select DRIVER_SUPPORT_SPI
     select SPI_SUPPORT_MASTER
+    select OPEN_SOURCE_LVGL
 
 endchoice
+
+config CLEARCHAIN_DEVICE_API
+    bool "ClearChain phone-controlled device API (Board A)"
+    default n
+    depends on CLEARCHAIN_DISPLAY_SLE_SERVER
+
+config CLEARCHAIN_DEVICE_HOST
+    string "Raspberry Pi / mock API IPv4 address"
+    default "192.168.4.1"
+    depends on CLEARCHAIN_DEVICE_API
+
+config CLEARCHAIN_DEVICE_PORT
+    int "Raspberry Pi / mock API HTTP port"
+    default 5000
+    range 1 65535
+    depends on CLEARCHAIN_DEVICE_API
 
 config CLEARCHAIN_DISPLAY_CLIENT_MTU_SIZE
     int "ClearChain display client MTU"
