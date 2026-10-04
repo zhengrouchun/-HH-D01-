@@ -1,6 +1,6 @@
 """Build isolated role deliverables; restore the user's configuration on exit.
 
-Run with the same Python used by the SDK: python project/tools/build_dual.py [a|b|api|api_mock|all].
+Run with the same Python used by the SDK: python project/tools/build_dual.py [a|b|api|api_mock|lcd_test|all].
 This does not flash hardware or run any network application.
 """
 from pathlib import Path
@@ -21,8 +21,8 @@ TOOLCHAIN = SDK / 'tools/bin/compiler/riscv/cc_riscv32_musl_105/cc_riscv32_musl_
 
 def main():
     choice = sys.argv[1] if len(sys.argv) > 1 else 'all'
-    if choice not in ('a', 'b', 'api', 'api_mock', 'all'):
-        raise SystemExit('Expected a, b, api, api_mock, or all')
+    if choice not in ('a', 'b', 'api', 'api_mock', 'lcd_test', 'all'):
+        raise SystemExit('Expected a, b, api, api_mock, lcd_test, or all')
     saved = {p: p.read_bytes() if p.exists() else None for p in (CONFIG, CONFIG.with_suffix('.config.old'))}
     env = os.environ.copy()
     ccache = SDK.parents[1] / 'tools/cfbb/thirdparty/ccache'
@@ -30,14 +30,16 @@ def main():
     roles = ('a', 'b', 'api') if choice == 'all' else (choice,)
     try:
         for role in roles:
-            dest = OUTPUT / ('board_a_' + role if role in ('api', 'api_mock') else 'board_' + role)
+            dest = OUTPUT / ('board_a_' + role if role in ('api', 'api_mock') else
+                             'board_b_lcd_test' if role == 'lcd_test' else 'board_' + role)
             dest.mkdir(parents=True, exist_ok=True)
             # A success marker belongs to this run only; never certify a stale package.
             marker = dest / 'manifest.json'
             if marker.exists():
                 marker.unlink()
             profile = ('board_a_api_mock.config' if role == 'api_mock' else
-                       'board_a_api.config' if role == 'api' else f'board_{role}.config')
+                       'board_a_api.config' if role == 'api' else
+                       'board_b_lcd_test.config' if role == 'lcd_test' else f'board_{role}.config')
             assignments = [line.strip() for line in (PROJECT / 'profiles' / profile).read_text().splitlines()
                            if line.strip() and not line.startswith('#')]
             with (dest / 'build.log').open('w', encoding='utf8') as log:
@@ -68,8 +70,14 @@ def main():
                 else:
                     assert 'tcp_client_demo.c' in names and 'clearchain_device_app.c' not in names
             else:
-                assert 'clearchain_lcd.c' in names and 'clearchain_display_client.c' in names
+                assert 'clearchain_lcd.c' in names
                 assert 'clearchain_ui.c' in names
+                if role == 'lcd_test':
+                    assert 'clearchain_lcd_selftest.c' in names
+                    assert 'clearchain_display_client.c' not in names
+                else:
+                    assert 'clearchain_display_client.c' in names
+                    assert 'clearchain_lcd_selftest.c' not in names
                 assert not any(name in names for name in ('r200_reader.c', 'clearchain_tca9555.c', 'clearchain_http.c', 'my_wifi_api.c'))
             assert 'clearchain_oled.c' not in names
             outputs = [SDK / 'output/ws63/fwpkg/ws63-liteos-app/ws63-liteos-app_all.fwpkg',

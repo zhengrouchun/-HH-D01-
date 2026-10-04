@@ -6,6 +6,9 @@
 #define CLEARCHAIN_LCD_PHYSICAL_WIDTH_MM_X10 980U
 #define CLEARCHAIN_LCD_PHYSICAL_HEIGHT_MM_X10 555U
 #define CLEARCHAIN_LCD_SPI_MHZ 2U
+/* WS63 polling SPI timeout counts loop iterations, not milliseconds.
+ * A 960-byte row alone needs at least 960 successful FIFO iterations. */
+#define CLEARCHAIN_LCD_SPI_POLL_LIMIT 100000U
 #define CLEARCHAIN_LCD_SCK 7U
 #define CLEARCHAIN_LCD_MOSI 9U
 #define CLEARCHAIN_LCD_CS 8U

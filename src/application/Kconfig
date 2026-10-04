@@ -43,6 +43,11 @@ config CLEARCHAIN_DISPLAY_CLIENT_MTU_SIZE
     range 64 520
     depends on CLEARCHAIN_DISPLAY_SLE_CLIENT
 
+config CLEARCHAIN_LCD_SELFTEST
+    bool "ClearChain LCD-only bench self-test (Board B)"
+    default n
+    depends on CLEARCHAIN_DISPLAY_SLE_CLIENT
+
 config CLEARCHAIN_DISPLAY_SLE_LINK_TEST
     bool "Send one ClearChain display link test after each connection"
     default n

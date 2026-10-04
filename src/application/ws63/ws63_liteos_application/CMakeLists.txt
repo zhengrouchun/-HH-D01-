@@ -61,10 +61,15 @@ endif()
 
 if(DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     list(APPEND SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client_entry.c
         ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_lcd.c
         ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_ui.c)
+    if(CONFIG_CLEARCHAIN_LCD_SELFTEST)
+        list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_lcd_selftest.c)
+    else()
+        list(APPEND SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_display_client_entry.c)
+    endif()
     if(NOT CONFIG_SPI_SUPPORT_MASTER)
         message(FATAL_ERROR "Board B requires SPI_SUPPORT_MASTER=y")
     endif()

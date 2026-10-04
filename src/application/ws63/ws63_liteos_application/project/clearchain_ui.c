@@ -49,10 +49,16 @@ int clearchain_ui_init(void)
 {
     static const char *const names[] = {"S1", "S2", "S3", "S4", "S5", "CP"};
     lv_obj_t *root;
-    if (clearchain_lcd_init() != 0) { return -1; }
+    if (clearchain_lcd_init() != 0) {
+        osal_printk("[CLEAR UI] LCD driver init failed before LVGL\r\n");
+        return -1;
+    }
     lv_init();
     g_display = lv_display_create(CLEARCHAIN_LCD_WIDTH, CLEARCHAIN_LCD_HEIGHT);
-    if (g_display == NULL) { return -1; }
+    if (g_display == NULL) {
+        osal_printk("[CLEAR UI] LVGL display allocation failed\r\n");
+        return -1;
+    }
     lv_display_set_color_format(g_display, LV_COLOR_FORMAT_RGB565);
     lv_display_set_flush_cb(g_display, flush_cb);
     lv_display_set_buffers(g_display, g_draw_buffer, NULL, sizeof(g_draw_buffer),

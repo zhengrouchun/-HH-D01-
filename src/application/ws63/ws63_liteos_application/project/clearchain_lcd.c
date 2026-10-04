@@ -21,15 +21,35 @@ static bool g_previous_valid;
 static clearchain_display_state_t g_previous;
 static clearchain_lcd_connection_t g_previous_connection;
 static bool g_previous_fresh;
+static const char *g_lcd_fail_step = NULL;
+static uint32_t g_lcd_fail_code = 0U;
+
+static int check_io(const char *operation, errcode_t ret)
+{
+    if (ret == ERRCODE_SUCC) { return 0; }
+    g_lcd_fail_step = operation;
+    g_lcd_fail_code = (uint32_t)ret;
+    osal_printk("[CLEAR LCD] %s failed: 0x%x\r\n", operation, (unsigned int)ret);
+    return -1;
+}
 
 static int write_bytes(bool data, const uint8_t *bytes, uint32_t length)
 {
     spi_xfer_data_t transfer = { .tx_buff = (uint8_t *)bytes, .tx_bytes = length };
-    (void)uapi_gpio_set_val(CLEARCHAIN_LCD_DC, data ? GPIO_LEVEL_HIGH : GPIO_LEVEL_LOW);
-    (void)uapi_gpio_set_val(CLEARCHAIN_LCD_CS, GPIO_LEVEL_LOW);
-    errcode_t ret = uapi_spi_master_write(SPI_BUS_0, &transfer, 100U);
-    (void)uapi_gpio_set_val(CLEARCHAIN_LCD_CS, GPIO_LEVEL_HIGH);
-    return ret == ERRCODE_SUCC ? 0 : -1;
+    if (check_io("DC value", uapi_gpio_set_val(CLEARCHAIN_LCD_DC,
+                 data ? GPIO_LEVEL_HIGH : GPIO_LEVEL_LOW)) != 0 ||
+        check_io("CS low", uapi_gpio_set_val(CLEARCHAIN_LCD_CS, GPIO_LEVEL_LOW)) != 0) { return -1; }
+    errcode_t ret = uapi_spi_master_write(SPI_BUS_0, &transfer, CLEARCHAIN_LCD_SPI_POLL_LIMIT);
+    int cs_ret = check_io("CS high", uapi_gpio_set_val(CLEARCHAIN_LCD_CS, GPIO_LEVEL_HIGH));
+    if (ret != ERRCODE_SUCC) {
+        g_lcd_fail_step = "SPI write";
+        g_lcd_fail_code = (uint32_t)ret;
+        osal_printk("[CLEAR LCD] SPI write failed: 0x%x data=%u bytes=%u poll_limit=%u\r\n",
+                    (unsigned int)ret, (unsigned int)data, (unsigned int)length,
+                    CLEARCHAIN_LCD_SPI_POLL_LIMIT);
+        return -1;
+    }
+    return cs_ret;
 }
 static int command(uint8_t cmd, const uint8_t *data, uint32_t length)
 {
@@ -76,13 +96,16 @@ static int text_band(uint16_t y, const char *text, uint16_t color, uint8_t scale
 int clearchain_lcd_init(void)
 {
     const uint8_t outputs[] = {CLEARCHAIN_LCD_CS,CLEARCHAIN_LCD_DC,CLEARCHAIN_LCD_RESET};
+    g_ready=false; g_previous_valid=false;
+    osal_printk("[CLEAR LCD] init begin: SPI0 2MHz mode0, poll_limit=%u\r\n",
+                CLEARCHAIN_LCD_SPI_POLL_LIMIT);
     uapi_pin_init(); uapi_gpio_init();
-    if (uapi_pin_set_mode(CLEARCHAIN_LCD_SCK,PIN_MODE_3) != ERRCODE_SUCC ||
-        uapi_pin_set_mode(CLEARCHAIN_LCD_MOSI,PIN_MODE_3) != ERRCODE_SUCC) { return -1; }
+    if (check_io("SCK pinmux",uapi_pin_set_mode(CLEARCHAIN_LCD_SCK,PIN_MODE_3)) != 0 ||
+        check_io("MOSI pinmux",uapi_pin_set_mode(CLEARCHAIN_LCD_MOSI,PIN_MODE_3)) != 0) { return -1; }
     for (unsigned int i=0; i<sizeof(outputs); i++) {
-        if (uapi_pin_set_mode(outputs[i],PIN_MODE_0) != ERRCODE_SUCC ||
-            uapi_gpio_set_dir(outputs[i],GPIO_DIRECTION_OUTPUT) != ERRCODE_SUCC) { return -1; }
-        (void)uapi_gpio_set_val(outputs[i],GPIO_LEVEL_HIGH);
+        if (check_io("control pinmux",uapi_pin_set_mode(outputs[i],PIN_MODE_0)) != 0 ||
+            check_io("GPIO output",uapi_gpio_set_dir(outputs[i],GPIO_DIRECTION_OUTPUT)) != 0 ||
+            check_io("GPIO initial high",uapi_gpio_set_val(outputs[i],GPIO_LEVEL_HIGH)) != 0) { return -1; }
     }
     spi_attr_t attr = {0}; spi_extra_attr_t extra = {0};
     attr.is_slave=false; attr.slave_num=1; attr.bus_clk=96000000;
@@ -90,9 +113,11 @@ int clearchain_lcd_init(void)
     attr.frame_format=0; attr.spi_frame_format=HAL_SPI_FRAME_FORMAT_STANDARD;
     attr.frame_size=HAL_SPI_FRAME_SIZE_8; attr.tmod=1;
     /* Polling writes are bounded to one row; no RX, touch, TF, MISO or DMA. */
-    if (uapi_spi_init(SPI_BUS_0,&attr,&extra) != ERRCODE_SUCC) { return -1; }
-    (void)uapi_gpio_set_val(CLEARCHAIN_LCD_RESET,GPIO_LEVEL_LOW); osal_msleep(100);
-    (void)uapi_gpio_set_val(CLEARCHAIN_LCD_RESET,GPIO_LEVEL_HIGH); osal_msleep(120);
+    if (check_io("SPI init",uapi_spi_init(SPI_BUS_0,&attr,&extra)) != 0) { return -1; }
+    if (check_io("RESET low",uapi_gpio_set_val(CLEARCHAIN_LCD_RESET,GPIO_LEVEL_LOW)) != 0) { return -1; }
+    osal_msleep(100);
+    if (check_io("RESET high",uapi_gpio_set_val(CLEARCHAIN_LCD_RESET,GPIO_LEVEL_HIGH)) != 0) { return -1; }
+    osal_msleep(120);
     if (command(0x11,NULL,0) != 0) { return -1; } osal_msleep(120);
     /* Module setup follows the local HiHope ST7796 reference; landscape RGB565. */
     static const uint8_t setup[][17] = {
@@ -113,6 +138,11 @@ int clearchain_lcd_init(void)
     g_ready=true; g_previous_valid=false;
     osal_printk("[CLEAR LCD] init 480x320 RGB565 SPI0 2MHz mode0; row_buffer=960\r\n");
     return 0;
+}
+void clearchain_lcd_get_last_error(const char **step, uint32_t *code)
+{
+    if (step != NULL) { *step = g_lcd_fail_step; }
+    if (code != NULL) { *code = g_lcd_fail_code; }
 }
 int clearchain_lcd_flush_rgb565(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
                                const uint8_t *pixels)

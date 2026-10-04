@@ -6,6 +6,7 @@
 #include "spi.h"
 static unsigned int dc=1,cs=1,command,pending,max_x,max_y,pixels,orientation;
 static unsigned int xs,xe,ys,ye;
+static unsigned int fail_next_write;
 int osal_printk(const char *f,...) { (void)f;return 0; }
 int osal_msleep(unsigned int ms) { (void)ms;return 0; }
 void uapi_pin_init(void) { }
@@ -20,7 +21,14 @@ errcode_t uapi_spi_init(unsigned int bus,const spi_attr_t *attr,const spi_extra_
 { (void)extra;assert(bus==0 && !attr->is_slave && attr->freq_mhz==2 && !attr->clk_phase && !attr->clk_polarity);return 0; }
 errcode_t uapi_spi_master_write(unsigned int bus,const spi_xfer_data_t *x,unsigned int timeout)
 {
-    assert(bus==0 && cs==0 && timeout==100 && x->tx_buff && x->tx_bytes>0 && x->tx_bytes<=960);
+    assert(bus==0 && cs==0 && timeout>0 && timeout<0xFFFFFFFFU && x->tx_buff && x->tx_bytes>0 && x->tx_bytes<=960);
+    /* WS63 HAL increments its polling counter on every iteration, including
+     * successful 8-bit FIFO writes. Even an always-ready FIFO needs one
+     * iteration per byte; timeout is not milliseconds. */
+    if (fail_next_write || timeout < x->tx_bytes) {
+        fail_next_write=0;
+        return 1U;
+    }
     if (!dc) {
         assert(x->tx_bytes==1 && pending==0);command=x->tx_buff[0];
         if(command==0x2C){pending=(xe-xs+1)*(ye-ys+1)*2;}
@@ -37,6 +45,8 @@ errcode_t uapi_spi_master_write(unsigned int bus,const spi_xfer_data_t *x,unsign
 }
 int main(void)
 {
+    fail_next_write=1;
+    assert(clearchain_lcd_init()!=0 && cs==1);
     assert(clearchain_lcd_init()==0 && max_x==479 && max_y==319 && orientation==1 && pixels>=480*320);
     clearchain_display_state_t s={.stage=1,.result=3,.risk_score=255,.flags=3};
     assert(clearchain_lcd_render(&s,CLEARCHAIN_LCD_CONNECTING,false)==0);
