@@ -246,7 +246,9 @@ static int start_task(osal_kthread_handler handler, const char *name, uint32_t s
 {
     osal_task *task = osal_kthread_create(handler, NULL, name, stack);
     if (task == NULL) { return -1; }
+    osal_kthread_lock();
     (void)osal_kthread_set_priority(task, priority);
+    osal_kthread_unlock();
     osal_kfree(task);
     return 0;
 }

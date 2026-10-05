@@ -415,7 +415,9 @@ int clearchain_display_link_init(void)
                                          "CCDisplaySLE", CLEAR_DISPLAY_TASK_STACK);
     if (task == NULL) { return -1; }
     g_clearchain_display_started = true;
+    osal_kthread_lock();
     (void)osal_kthread_set_priority(task, CLEAR_DISPLAY_TASK_PRIORITY);
+    osal_kthread_unlock();
     osal_kfree(task);
     return 0;
 }

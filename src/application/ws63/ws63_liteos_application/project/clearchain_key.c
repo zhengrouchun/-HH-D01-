@@ -286,7 +286,9 @@ void clearchain_key_start(void)
         return;
     }
 
+    osal_kthread_lock();
     osal_kthread_set_priority(task_handle, 24);
+    osal_kthread_unlock();
     osal_kfree(task_handle);
     g_key_started = 1;
 }
