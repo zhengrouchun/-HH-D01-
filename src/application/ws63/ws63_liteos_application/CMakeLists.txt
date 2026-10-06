@@ -30,7 +30,12 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/clock_init.c
 )
 
-if(NOT DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
+if(CONFIG_CLEARCHAIN_R200_SELFTEST)
+    list(APPEND SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/r200_uart.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/r200_protocol.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_r200_selftest.c)
+elseif(NOT DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_state.c
     ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_http.c

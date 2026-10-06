@@ -48,6 +48,14 @@ config CLEARCHAIN_LCD_SELFTEST
     default n
     depends on CLEARCHAIN_DISPLAY_SLE_CLIENT
 
+config CLEARCHAIN_R200_SELFTEST
+    bool "ClearChain R200-only bench self-test (Board A)"
+    default n
+    depends on CLEARCHAIN_DISPLAY_SLE_OFF && !SAMPLE_ENABLE
+    help
+        Actively poll the R200 and print raw replies, EPC and signed RSSI.
+        Does not require TCA9555, Wi-Fi, SLE, a batch or a backend.
+
 config CLEARCHAIN_DISPLAY_SLE_LINK_TEST
     bool "Send one ClearChain display link test after each connection"
     default n

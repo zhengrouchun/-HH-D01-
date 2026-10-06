@@ -9,6 +9,8 @@ typedef enum {
     CLEARCHAIN_LCD_STALE = 3
 } clearchain_lcd_connection_t;
 int clearchain_lcd_init(void);
+/* Bench calibration only; call from the display task after successful init. */
+int clearchain_lcd_set_inversion(bool enabled);
 /* Returns the last failing init step string and error code (0 if none yet). */
 void clearchain_lcd_get_last_error(const char **step, uint32_t *code);
 /* LVGL flush writes a bounded RGB565 rectangle in row-major order. */

@@ -6,9 +6,9 @@
 // WiFi配置
 // =============================
 
-#define WIFI_SSID_NAME "@Ruijie-456"
+#define WIFI_SSID_NAME "stu.gpnu.edu.cn"
 
-#define WIFI_SSID_KEY "12345679"
+#define WIFI_SSID_KEY "zrc050609"
 
 
 // =============================

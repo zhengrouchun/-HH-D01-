@@ -9,30 +9,39 @@
 #include <string.h>
 
 #define LCD_TEST_STEP_MS 6000U
-#define LCD_TEST_COLOR_MS 5000U
+#define LCD_TEST_COLOR_MS 8000U
 
-static void hold_screen(uint32_t duration_ms)
+static void hold_screen(uint32_t duration_ms, const clearchain_display_state_t *state)
 {
     uint64_t start = uapi_systick_get_ms();
     uint64_t last = start;
     while (uapi_systick_get_ms() - start < duration_ms) {
         uint64_t now = uapi_systick_get_ms();
         clearchain_ui_tick((unsigned int)(now - last));
+        /* The normal client renders every tick. Do the same here so a mode
+         * banner expires and the simulated result actually becomes visible. */
+        if (state != NULL) {
+            clearchain_ui_render(state, CLEARCHAIN_LCD_CONNECTED, true);
+        }
         last = now;
         osal_msleep(30);
     }
 }
 
-static void show_color_bars(void)
+static void show_color_bars(bool inverted)
 {
-    static const uint32_t colors[3] = {0xFF0000U, 0x00FF00U, 0x0000FFU};
-    static const char *const names[3] = {"RED", "GREEN", "BLUE"};
-    lv_obj_t *bars[3] = {NULL, NULL, NULL};
-    for (unsigned int i = 0; i < 3U; ++i) {
+    static const uint32_t colors[5] = {0x000000U, 0xFFFFFFU, 0xFF0000U, 0x00FF00U, 0x0000FFU};
+    static const char *const names[5] = {"BLACK", "WHITE", "RED", "GREEN", "BLUE"};
+    lv_obj_t *bars[5] = {NULL, NULL, NULL, NULL, NULL};
+    if (clearchain_lcd_set_inversion(inverted) != 0) {
+        osal_printk("[LCD TEST] inversion command failed\r\n");
+        return;
+    }
+    for (unsigned int i = 0; i < 5U; ++i) {
         bars[i] = lv_obj_create(lv_screen_active());
         if (bars[i] == NULL) { continue; }
-        lv_obj_set_pos(bars[i], (int)(i * 160U), 0);
-        lv_obj_set_size(bars[i], 160, 320);
+        lv_obj_set_pos(bars[i], (int)(i * 96U), 0);
+        lv_obj_set_size(bars[i], 96, 320);
         lv_obj_set_style_radius(bars[i], 0, 0);
         lv_obj_set_style_border_width(bars[i], 0, 0);
         lv_obj_set_style_pad_all(bars[i], 0, 0);
@@ -41,13 +50,14 @@ static void show_color_bars(void)
         lv_obj_t *label = lv_label_create(bars[i]);
         if (label != NULL) {
             lv_label_set_text(label, names[i]);
-            lv_obj_set_style_text_color(label, lv_color_hex(0x000000), 0);
+            lv_obj_set_style_text_color(label, lv_color_hex(i == 0U || i == 4U ? 0xFFFFFFU : 0x000000U), 0);
             lv_obj_center(label);
         }
     }
-    osal_printk("[LCD TEST] RED GREEN BLUE bars, 480x320 landscape\r\n");
-    hold_screen(LCD_TEST_COLOR_MS);
-    for (unsigned int i = 0; i < 3U; ++i) {
+    osal_printk("[LCD TEST] INVERSION=%s command=0x%02x; LEFT->RIGHT BLACK WHITE RED GREEN BLUE; hold=8s\r\n",
+                inverted ? "ON" : "OFF", inverted ? 0x21U : 0x20U);
+    hold_screen(LCD_TEST_COLOR_MS, NULL);
+    for (unsigned int i = 0; i < 5U; ++i) {
         if (bars[i] != NULL) { lv_obj_delete(bars[i]); }
     }
 }
@@ -107,14 +117,14 @@ static void show_sample(unsigned int index, uint32_t version)
     }
     osal_printk("[LCD TEST] sample=%u version=%u\r\n", index, version);
     clearchain_ui_render(&state, CLEARCHAIN_LCD_CONNECTED, true);
-    hold_screen(LCD_TEST_STEP_MS);
+    hold_screen(LCD_TEST_STEP_MS, &state);
 }
 
 static void *lcd_test_task(void *arg)
 {
     uint32_t version = 1U;
     (void)arg;
-    osal_printk("[LCD TEST] task started, LCD init begin (SPI polling fix)\r\n");
+    osal_printk("[LCD TEST] lcd-colors-inversion-20261006-v1; no SLE/backend required\r\n");
     if (clearchain_ui_init() != 0) {
         /* Controlled abort, NOT a crash: the [CLEAR LCD]/[CLEAR UI] lines above
          * name the exact failing step. Bump stack / heap or fix that step. */
@@ -134,8 +144,12 @@ static void *lcd_test_task(void *arg)
         }
         return NULL;
     }
-    show_color_bars();
     while (1) {
+        show_color_bars(false);
+        show_color_bars(true);
+        if (clearchain_lcd_set_inversion(false) != 0) {
+            osal_printk("[LCD TEST] could not restore INVERSION=OFF for simulated screens\r\n");
+        }
         for (unsigned int i = 0; i < 8U; ++i) { show_sample(i, version++); }
     }
     return NULL;

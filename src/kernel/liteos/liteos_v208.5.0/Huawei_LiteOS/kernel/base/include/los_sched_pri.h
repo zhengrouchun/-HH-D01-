@@ -139,8 +139,20 @@ STATIC INLINE BOOL OsPreemptable(VOID)
      * is called, needs manually disable interrupt, to prevent current task from
      * being migrated to another core, and get the wrong preemptible status.
      */
+    /*
+     * 2026-10-05 root fix (WS63 clearchain):
+     * Nothing is schedulable before osKernelStart(). OS_SCHEDULER_SET() is only
+     * called from OsStartToRun() (los_init.c), so g_taskScheduled stays 0 for
+     * the whole init window. The pseudo task osMain (priority = 32, never in the
+     * ready queue) used to reach OsSchedPreempt()/LOS_TaskDelay() during init and
+     * fault on a NULL/invalid TCB (mtval 0x4 or 0x0). Reporting "not
+     * preemptible" here makes every init stage schedule / delay / IPC wait return
+     * early with an error code and WITHOUT touching any task state, instead of
+     * corrupting the scheduler. After osKernelStart() the flag is always set, so
+     * runtime behaviour is unchanged.
+     */
     UINT32 intSave = LOS_IntLock();
-    BOOL preemptible = (OsPercpuGet()->taskLockCnt == 0);
+    BOOL preemptible = (OsPercpuGet()->taskLockCnt == 0) && OS_SCHEDULER_ACTIVE;
     if (!preemptible) {
         OsSetSchedFlag(INT_PEND_RESCH);
     }
@@ -158,10 +170,11 @@ STATIC INLINE BOOL OsPreemptableInSched(VOID)
      * For smp systems, schedule must hold the task spinlock, and this counter
      * will increase by 1 in that case.
      */
-    preemptible = (OsPercpuGet()->taskLockCnt == 1);
+    preemptible = (OsPercpuGet()->taskLockCnt == 1) && OS_SCHEDULER_ACTIVE;
 
 #else
-    preemptible = (OsPercpuGet()->taskLockCnt == 0);
+    /* 2026-10-05 root fix (WS63 clearchain): see OsPreemptable() above. */
+    preemptible = (OsPercpuGet()->taskLockCnt == 0) && OS_SCHEDULER_ACTIVE;
 #endif
     if (!preemptible) {
         OsSetSchedFlag(INT_PEND_RESCH);

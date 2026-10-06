@@ -131,13 +131,20 @@ int clearchain_lcd_init(void)
     for (size_t i=0; i<sizeof(setup)/sizeof(setup[0]); i++) {
         if (command(setup[i][0],&setup[i][2],setup[i][1]) != 0) { return -1; }
     }
-    if (command(0x21,NULL,0) != 0 || command(0x29,NULL,0) != 0) { return -1; }
+    /* This panel was verified with the standalone OFF color bars and pages. */
+    if (command(0x20,NULL,0) != 0 || command(0x29,NULL,0) != 0) { return -1; }
     osal_msleep(20);
     if (fill(0,0,CLEARCHAIN_LCD_WIDTH,CLEARCHAIN_LCD_HEIGHT,BG) != 0 || text_band(12,"CLEARCHAIN",WHITE,3) != 0 ||
         text_band(42,"BOARD B / ST7796 LANDSCAPE",BLUE,2) != 0) { return -1; }
     g_ready=true; g_previous_valid=false;
     osal_printk("[CLEAR LCD] init 480x320 RGB565 SPI0 2MHz mode0; row_buffer=960\r\n");
+    osal_printk("[CLEAR LCD] calibrated inversion=OFF command=0x20\r\n");
     return 0;
+}
+int clearchain_lcd_set_inversion(bool enabled)
+{
+    if (!g_ready) { return -1; }
+    return command(enabled ? 0x21U : 0x20U, NULL, 0U);
 }
 void clearchain_lcd_get_last_error(const char **step, uint32_t *code)
 {

@@ -30,6 +30,9 @@ static volatile bool g_clearchain_display_connected;
 static volatile bool g_clearchain_display_ready;
 static volatile bool g_clearchain_display_replay_pending;
 static volatile uint32_t g_clearchain_display_epoch;
+static bool g_clearchain_display_pair_cleanup_attempted;
+static bool g_clearchain_display_pair_cleanup_pending;
+static uint64_t g_clearchain_display_connected_at_ms;
 static uint8_t g_clearchain_display_server_id;
 static uint16_t g_clearchain_display_service_handle;
 static uint16_t g_clearchain_display_property_handle;
@@ -202,25 +205,52 @@ static void clearchain_display_set_mtu(void)
     }
 }
 
+static void clearchain_display_pair_removed(const sle_addr_t *addr, errcode_t status)
+{
+    unused(addr);
+    osal_printk("[CLEAR SLE] peer pairing record removal status=0x%x\r\n", status);
+    if (g_clearchain_display_pair_cleanup_pending) {
+        g_clearchain_display_pair_cleanup_pending = false;
+        if (sle_start_announce(CLEAR_DISPLAY_ADV_HANDLE) != ERRCODE_SLE_SUCCESS) {
+            osal_printk("[CLEAR SLE] restart advertising after pairing cleanup failed\r\n");
+        }
+    }
+}
+
 static void clearchain_display_connection_changed(uint16_t conn_id, const sle_addr_t *addr,
     sle_acb_state_t state, sle_pair_state_t pair_state, sle_disc_reason_t reason)
 {
-    unused(addr);
-    unused(reason);
+    osal_printk("[CLEAR SLE] link state=%u pair_state=%u reason=0x%x\r\n", state, pair_state, reason);
     if (state == SLE_ACB_STATE_CONNECTED) {
         g_clearchain_display_conn_id = conn_id;
         g_clearchain_display_connected = true;
         g_clearchain_display_ready = false;
+        g_clearchain_display_connected_at_ms = uapi_systick_get_ms();
         osal_printk("[CLEAR SLE] display connected\r\n");
         if (pair_state != SLE_PAIR_NONE) {
             clearchain_display_set_mtu();
         }
     } else if (state == SLE_ACB_STATE_DISCONNECTED) {
+        bool was_ready = g_clearchain_display_ready;
+        uint64_t connected_for_ms = uapi_systick_get_ms() - g_clearchain_display_connected_at_ms;
         g_clearchain_display_connected = false;
         g_clearchain_display_ready = false;
         g_clearchain_display_conn_id = 0;
         g_clearchain_display_epoch++;
         osal_printk("[CLEAR SLE] display disconnected, advertising again\r\n");
+        /* A fresh image can retain an old peer bond. Recover only this peer,
+         * once, after a link drops before MTU exchange; leave other bonds alone. */
+        if (!was_ready && connected_for_ms < 4000U &&
+            !g_clearchain_display_pair_cleanup_attempted && addr != NULL) {
+            g_clearchain_display_pair_cleanup_attempted = true;
+            g_clearchain_display_pair_cleanup_pending = true;
+            errcode_t cleanup_status = sle_remove_paired_remote_device(addr);
+            osal_printk("[CLEAR SLE] peer pairing cleanup request status=0x%x\r\n", cleanup_status);
+            if (cleanup_status == ERRCODE_SLE_SUCCESS) {
+                return; /* Resume advertising when the asynchronous removal completes. */
+            }
+            g_clearchain_display_pair_cleanup_pending = false;
+        }
         if (sle_start_announce(CLEAR_DISPLAY_ADV_HANDLE) != ERRCODE_SLE_SUCCESS) {
             osal_printk("[CLEAR SLE] restart advertising failed\r\n");
         }
@@ -263,6 +293,7 @@ static errcode_t clearchain_display_register_server(void)
 
     connection_callbacks.connect_state_changed_cb = clearchain_display_connection_changed;
     connection_callbacks.pair_complete_cb = clearchain_display_pair_complete;
+    connection_callbacks.pair_remove_cb = clearchain_display_pair_removed;
     status = sle_connection_register_callbacks(&connection_callbacks);
     if (status != ERRCODE_SLE_SUCCESS) {
         return status;
@@ -377,6 +408,7 @@ static void *clearchain_display_task(void *arg)
     uint32_t sent_generation = UINT32_MAX;
     uint64_t last_send = 0U;
     unused(arg);
+    osal_printk("[CLEAR SLE] server peer-bond-recovery-20261005-v1\r\n");
     (void)osal_msleep(5000);
     status = enable_sle();
     if (status == ERRCODE_SLE_SUCCESS) { status = clearchain_display_register_server(); }

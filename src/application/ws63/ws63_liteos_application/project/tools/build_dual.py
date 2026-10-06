@@ -1,6 +1,6 @@
 """Build isolated role deliverables; restore the user's configuration on exit.
 
-Run with the same Python used by the SDK: python project/tools/build_dual.py [a|b|api|api_mock|lcd_test|all].
+Run with the same Python used by the SDK: python project/tools/build_dual.py [a|b|api|api_mock|lcd_test|r200_test|all].
 This does not flash hardware or run any network application.
 """
 from pathlib import Path
@@ -19,10 +19,25 @@ BUILD = SDK / 'output/ws63/acore/ws63-liteos-app'
 TOOLCHAIN = SDK / 'tools/bin/compiler/riscv/cc_riscv32_musl_105/cc_riscv32_musl_win/bin'
 
 
+def profile_assignments(path):
+    assignments = []
+    for line in path.read_text(encoding='utf8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        name, value = line.split('=', 1)
+        # usr_config passes this value directly to Kconfig.set_value().
+        # subprocess argv has no shell to remove profile string quotes.
+        if value.startswith('"') and value.endswith('"'):
+            value = json.loads(value)
+        assignments.append(name + '=' + value)
+    return assignments
+
+
 def main():
     choice = sys.argv[1] if len(sys.argv) > 1 else 'all'
-    if choice not in ('a', 'b', 'api', 'api_mock', 'lcd_test', 'all'):
-        raise SystemExit('Expected a, b, api, api_mock, lcd_test, or all')
+    if choice not in ('a', 'b', 'api', 'api_mock', 'lcd_test', 'r200_test', 'all'):
+        raise SystemExit('Expected a, b, api, api_mock, lcd_test, r200_test, or all')
     saved = {p: p.read_bytes() if p.exists() else None for p in (CONFIG, CONFIG.with_suffix('.config.old'))}
     env = os.environ.copy()
     ccache = SDK.parents[1] / 'tools/cfbb/thirdparty/ccache'
@@ -31,7 +46,8 @@ def main():
     try:
         for role in roles:
             dest = OUTPUT / ('board_a_' + role if role in ('api', 'api_mock') else
-                             'board_b_lcd_test' if role == 'lcd_test' else 'board_' + role)
+                             'board_b_lcd_test' if role == 'lcd_test' else
+                             'board_a_r200_test' if role == 'r200_test' else 'board_' + role)
             dest.mkdir(parents=True, exist_ok=True)
             # A success marker belongs to this run only; never certify a stale package.
             marker = dest / 'manifest.json'
@@ -39,9 +55,9 @@ def main():
                 marker.unlink()
             profile = ('board_a_api_mock.config' if role == 'api_mock' else
                        'board_a_api.config' if role == 'api' else
-                       'board_b_lcd_test.config' if role == 'lcd_test' else f'board_{role}.config')
-            assignments = [line.strip() for line in (PROJECT / 'profiles' / profile).read_text().splitlines()
-                           if line.strip() and not line.startswith('#')]
+                       'board_b_lcd_test.config' if role == 'lcd_test' else
+                       'board_a_r200_test.config' if role == 'r200_test' else f'board_{role}.config')
+            assignments = profile_assignments(PROJECT / 'profiles' / profile)
             with (dest / 'build.log').open('w', encoding='utf8') as log:
                 for cmd in ([sys.executable, 'build/script/usr_config.py', '--command', 'setconfig',
                              '--chip', 'ws63', '--core', 'acore', '--target', 'ws63-liteos-app', *assignments],
@@ -52,7 +68,8 @@ def main():
                     if result.returncode:
                         raise RuntimeError(f'Board {role} failed ({result.returncode}); see {dest / "build.log"}')
             generated = (BUILD / 'mconfig.h').read_text()
-            expected = 'SERVER' if role in ('a', 'api', 'api_mock') else 'CLIENT'
+            expected = ('OFF' if role == 'r200_test' else
+                        'SERVER' if role in ('a', 'api', 'api_mock') else 'CLIENT')
             if f'#define CONFIG_CLEARCHAIN_DISPLAY_SLE_{expected} 1' not in generated:
                 raise RuntimeError('Generated role does not match requested profile')
             archives = list(BUILD.rglob('libws63_liteos_app.a'))
@@ -61,7 +78,13 @@ def main():
             members = subprocess.check_output([str(TOOLCHAIN / 'riscv32-linux-musl-ar.exe'), 't', str(archives[0])], env=env)
             (dest / 'archive-members.txt').write_bytes(members)
             names = members.decode()
-            if role in ('a', 'api', 'api_mock'):
+            if role == 'r200_test':
+                assert all(name in names for name in ('clearchain_r200_selftest.c', 'r200_uart.c', 'r200_protocol.c'))
+                assert not any(name in names for name in (
+                    'clearchain_device_app.c', 'tcp_client_demo.c', 'my_wifi_api.c',
+                    'clearchain_tca9555.c', 'clearchain_display_link.c', 'clearchain_display_client.c', 'clearchain_lcd.c'))
+                assert '#define CONFIG_CLEARCHAIN_R200_SELFTEST 1' in generated
+            elif role in ('a', 'api', 'api_mock'):
                 assert 'clearchain_display_link.c' in names and 'r200_reader.c' in names
                 assert 'clearchain_lcd.c' not in names and 'clearchain_display_client.c' not in names
                 if role in ('api', 'api_mock'):

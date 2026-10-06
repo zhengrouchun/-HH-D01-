@@ -6,7 +6,7 @@
 #include "spi.h"
 static unsigned int dc=1,cs=1,command,pending,max_x,max_y,pixels,orientation;
 static unsigned int xs,xe,ys,ye;
-static unsigned int fail_next_write;
+static unsigned int fail_next_write,inversion_on,inversion_off;
 int osal_printk(const char *f,...) { (void)f;return 0; }
 int osal_msleep(unsigned int ms) { (void)ms;return 0; }
 void uapi_pin_init(void) { }
@@ -31,6 +31,8 @@ errcode_t uapi_spi_master_write(unsigned int bus,const spi_xfer_data_t *x,unsign
     }
     if (!dc) {
         assert(x->tx_bytes==1 && pending==0);command=x->tx_buff[0];
+        if(command==0x21){inversion_on++;}
+        if(command==0x20){inversion_off++;}
         if(command==0x2C){pending=(xe-xs+1)*(ye-ys+1)*2;}
     } else if(command==0x2A || command==0x2B) {
         assert(x->tx_bytes==4);
@@ -46,8 +48,12 @@ errcode_t uapi_spi_master_write(unsigned int bus,const spi_xfer_data_t *x,unsign
 int main(void)
 {
     fail_next_write=1;
+    assert(clearchain_lcd_set_inversion(false)!=0);
     assert(clearchain_lcd_init()!=0 && cs==1);
     assert(clearchain_lcd_init()==0 && max_x==479 && max_y==319 && orientation==1 && pixels>=480*320);
+    assert(inversion_on==0 && inversion_off==1);
+    assert(clearchain_lcd_set_inversion(false)==0 && inversion_off==2);
+    assert(clearchain_lcd_set_inversion(true)==0 && inversion_on==1);
     clearchain_display_state_t s={.stage=1,.result=3,.risk_score=255,.flags=3};
     assert(clearchain_lcd_render(&s,CLEARCHAIN_LCD_CONNECTING,false)==0);
     assert(clearchain_lcd_render(&s,CLEARCHAIN_LCD_CONNECTED,true)==0);
