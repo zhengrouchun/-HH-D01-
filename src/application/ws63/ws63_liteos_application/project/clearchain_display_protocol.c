@@ -18,7 +18,8 @@ static int valid(uint8_t command, const clearchain_display_state_t *s)
            s->result <= CLEARCHAIN_DISPLAY_RESULT_LOCAL_CAPTURE &&
            (s->risk_score <= 100U || s->risk_score == CLEARCHAIN_RISK_SCORE_UNKNOWN) &&
            (s->flags & ~31U) == 0U && s->error <= CLEARCHAIN_ERROR_DISABLED_KEY &&
-           s->message[CLEARCHAIN_DISPLAY_MESSAGE_SIZE - 1U] == '\0';
+           s->message[CLEARCHAIN_DISPLAY_MESSAGE_SIZE - 1U] == '\0' &&
+           s->mode_label[23] == '\0' && s->scan_direction<=3U && s->color<=3U && s->armed<=1U;
 }
 int clearchain_display_encode(uint8_t *out, size_t capacity, uint8_t command,
                               uint32_t sequence, const clearchain_display_state_t *s)
@@ -32,14 +33,16 @@ int clearchain_display_encode(uint8_t *out, size_t capacity, uint8_t command,
     out[10] = s->stage; out[11] = s->phase; out[12] = s->percent; out[13] = s->tag_count;
     out[14] = (uint8_t)s->total_samples; out[15] = (uint8_t)(s->total_samples >> 8);
     out[16] = (uint8_t)s->error; out[17] = (uint8_t)(s->error >> 8);
-    out[18] = s->result; out[19] = s->risk_score; out[20] = s->flags; out[21] = 0;
+    out[18] = s->result; out[19] = s->risk_score; out[20] = s->flags; out[21] = s->scan_direction;
     for (unsigned int i = 0; i < 4; ++i) { out[22+i] = (uint8_t)(s->state_version >> (8U*i)); }
     out[26] = (uint8_t)s->tags_expected; out[27] = (uint8_t)(s->tags_expected >> 8);
     for (unsigned int i = 0; i < CLEARCHAIN_DISPLAY_MESSAGE_SIZE; ++i) {
         out[28+i] = (uint8_t)s->message[i];
     }
+    for (unsigned int i=0;i<24U;i++) { out[92+i]=(uint8_t)s->mode_label[i]; }
+    out[116]=s->color; out[117]=s->armed;
     uint16_t crc = crc16(out, CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE - 2U);
-    out[76] = (uint8_t)crc; out[77] = (uint8_t)(crc >> 8);
+    out[118] = (uint8_t)crc; out[119] = (uint8_t)(crc >> 8);
     return CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE;
 }
 int clearchain_display_decode(const uint8_t *p, size_t length, uint8_t *command,
@@ -49,9 +52,9 @@ int clearchain_display_decode(const uint8_t *p, size_t length, uint8_t *command,
     if (p == NULL || s == NULL || command == NULL || sequence == NULL ||
         length != CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE || p[0] != 'C' || p[1] != 'C' ||
         p[2] != CLEARCHAIN_DISPLAY_PROTOCOL_VERSION || p[8] != CLEARCHAIN_DISPLAY_PAYLOAD_SIZE ||
-        p[9] != 0U || p[21] != 0U || p[75] != 0U ||
+        p[9] != 0U || p[91] != 0U || p[115] != 0U ||
         crc16(p, CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE - 2U) !=
-        (uint16_t)(p[76] | ((uint16_t)p[77] << 8))) {
+        (uint16_t)(p[118] | ((uint16_t)p[119] << 8))) {
         return -1;
     }
     value.stage = p[10]; value.phase = p[11]; value.percent = p[12]; value.tag_count = p[13];
@@ -64,6 +67,8 @@ int clearchain_display_decode(const uint8_t *p, size_t length, uint8_t *command,
     for (unsigned int i = 0; i < CLEARCHAIN_DISPLAY_MESSAGE_SIZE; ++i) {
         value.message[i] = (char)p[28+i];
     }
+    for (unsigned int i=0;i<24U;i++) { value.mode_label[i]=(char)p[92+i]; }
+    value.scan_direction=p[21]; value.color=p[116]; value.armed=p[117];
     if (!valid(p[3], &value)) { return -1; }
     *s = value; *command = p[3];
     *sequence = (uint32_t)p[4] | ((uint32_t)p[5] << 8) | ((uint32_t)p[6] << 16) | ((uint32_t)p[7] << 24);

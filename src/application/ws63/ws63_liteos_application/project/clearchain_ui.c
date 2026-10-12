@@ -19,6 +19,7 @@ static uint32_t g_last_version;
 static uint8_t g_last_mode = 255U;
 static clearchain_lcd_connection_t g_last_connection = CLEARCHAIN_LCD_STALE;
 static bool g_last_fresh;
+static uint8_t g_last_flags;
 static uint32_t g_selected_until;
 static bool g_rendered;
 
@@ -86,11 +87,13 @@ int clearchain_ui_init(void)
     g_count = label(root, 18, 158, 444);
     g_risk = label(root, 18, 191, 444);
     g_message = label(root, 18, 247, 444);
+    lv_label_set_long_mode(g_message, LV_LABEL_LONG_WRAP);
     lv_label_set_text(g_status, "SCR_BOOT  Connecting...");
     lv_label_set_text(g_count, "");
     lv_label_set_text(g_risk, "");
     lv_label_set_text(g_message, "");
     lv_obj_add_flag(g_progress, LV_OBJ_FLAG_HIDDEN);
+    osal_printk("[CLEAR UI] state-v4: mode label, full message, IN/OUT, armed\r\n");
     return 0;
 }
 
@@ -103,7 +106,8 @@ void clearchain_ui_render(const clearchain_display_state_t *state,
     bool banner_expired = g_selected_until != 0U && now >= g_selected_until;
     if (state == NULL || g_display == NULL) { return; }
     if (g_rendered && !banner_expired && state->state_version == g_last_version &&
-        state->stage == g_last_mode && connection == g_last_connection && fresh == g_last_fresh) {
+        state->stage == g_last_mode && connection == g_last_connection && fresh == g_last_fresh &&
+        state->flags == g_last_flags) {
         return;
     }
     if (fresh && state->stage != g_last_mode && g_last_mode != 255U) {
@@ -127,12 +131,17 @@ void clearchain_ui_render(const clearchain_display_state_t *state,
             "S5 HOSPITAL selected", "CP MOBILE INSPECTION selected"
         };
         status = state->stage <= 6U ? selected[state->stage] : selected[0];
+        if (state->mode_label[0]) {
+            (void)snprintf(text,sizeof(text),"%s selected",state->mode_label); status=text;
+        }
     } else if (state->phase == CLEARCHAIN_DISPLAY_WAITING) {
-        status = "SCR_READY  Waiting for scan";
+        status = state->armed ? "SCR_READY  Waiting for scan" : "SCR_READY  Waiting for Start";
     } else if (state->phase == CLEARCHAIN_DISPLAY_SCANNING) {
         status = "SCR_SCANNING";
     } else if (state->phase == CLEARCHAIN_DISPLAY_FINISHED) {
-        status = "SCR_RESULT";
+        status = state->scan_direction==1U ? "SCR_RESULT  IN" :
+            (state->scan_direction==2U ? "SCR_RESULT  OUT" :
+            (state->scan_direction==3U ? "SCR_RESULT  MIXED" : "SCR_RESULT"));
     } else if (state->phase == CLEARCHAIN_DISPLAY_ERROR) {
         status = "SCR_ERROR";
     }
@@ -154,11 +163,17 @@ void clearchain_ui_render(const clearchain_display_state_t *state,
             const char *word = state->result == CLEARCHAIN_DISPLAY_RESULT_APPROVED ? "APPROVED" :
                 (state->result == CLEARCHAIN_DISPLAY_RESULT_MONITOR ? "MONITOR" :
                 (state->result == CLEARCHAIN_DISPLAY_RESULT_REJECT ? "REJECT" : "RESULT UNKNOWN"));
-            (void)snprintf(text, sizeof(text), "%s  Risk %u%%", word, state->risk_score);
+            if (state->risk_score==CLEARCHAIN_RISK_SCORE_UNKNOWN) {
+                (void)snprintf(text,sizeof(text),"%s", strncmp(state->message,"LOCAL TEST",10U)==0 ?
+                    "LOCAL READS - NO VERDICT" : "RESULT UNKNOWN");
+            } else { (void)snprintf(text, sizeof(text), "%s  Risk %u%%", word, state->risk_score); }
             lv_label_set_text(g_risk, text);
             lv_obj_set_style_text_color(g_risk,
-                lv_color_hex(state->result == CLEARCHAIN_DISPLAY_RESULT_APPROVED ? 0x22CC66 :
-                    (state->result == CLEARCHAIN_DISPLAY_RESULT_MONITOR ? 0xFFB020 : 0xFF5555)), 0);
+                lv_color_hex(state->color==1U ? 0x22CC66 :
+                    (state->color==2U ? 0xFFB020 :
+                    (state->color==3U ? 0xFF5555 :
+                    (state->result==CLEARCHAIN_DISPLAY_RESULT_APPROVED ? 0x22CC66 :
+                    (state->result==CLEARCHAIN_DISPLAY_RESULT_MONITOR ? 0xFFB020 : 0xFFFFFF))))), 0);
         } else { lv_label_set_text(g_risk, ""); }
         lv_label_set_text(g_message, state->message[0] ? state->message : "Details on phone");
         if (state->phase == CLEARCHAIN_DISPLAY_SCANNING &&
@@ -171,6 +186,7 @@ void clearchain_ui_render(const clearchain_display_state_t *state,
     g_last_mode = state->stage;
     g_last_connection = connection;
     g_last_fresh = fresh;
+    g_last_flags = state->flags;
     g_rendered = true;
 }
 

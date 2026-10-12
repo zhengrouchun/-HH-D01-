@@ -4,11 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CLEARCHAIN_DISPLAY_PROTOCOL_VERSION 3U
+#define CLEARCHAIN_DISPLAY_PROTOCOL_VERSION 4U
 #define CLEARCHAIN_DISPLAY_HEADER_SIZE 10U
-#define CLEARCHAIN_DISPLAY_MESSAGE_SIZE 48U
-#define CLEARCHAIN_DISPLAY_PAYLOAD_SIZE 66U
-#define CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE 78U
+#define CLEARCHAIN_DISPLAY_MESSAGE_SIZE 64U
+#define CLEARCHAIN_DISPLAY_PAYLOAD_SIZE 108U
+#define CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE 120U
 #define CLEARCHAIN_DISPLAY_MIN_STAGE 0U
 #define CLEARCHAIN_DISPLAY_MAX_STAGE 6U
 #define CLEARCHAIN_RISK_SCORE_UNKNOWN 0xFFU
@@ -62,10 +62,13 @@ typedef struct {
     uint32_t state_version;
     uint16_t tags_expected; /* UINT16_MAX means JSON null. */
     char message[CLEARCHAIN_DISPLAY_MESSAGE_SIZE];
+    char mode_label[24];
+    uint8_t scan_direction, color, armed;
 } clearchain_display_state_t;
 
 /* Every event carries full state: coalescing cannot lose a required delta.
- * No native structs, strings, EPCs or pixels are transmitted. */
+ * Fields use explicit byte offsets, with bounded ASCII message/label text;
+ * native structs, EPCs and pixels are never transmitted. */
 int clearchain_display_encode(uint8_t *out, size_t capacity, uint8_t command,
                               uint32_t sequence, const clearchain_display_state_t *state);
 int clearchain_display_decode(const uint8_t *packet, size_t length, uint8_t *command,

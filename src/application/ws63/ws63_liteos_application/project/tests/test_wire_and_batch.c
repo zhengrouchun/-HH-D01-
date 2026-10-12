@@ -40,13 +40,15 @@ static void test_display(void)
     uint8_t packet[CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE], type; uint32_t seq; clearchain_display_state_t decoded;
     clearchain_display_state_t state={.stage=4,.phase=1,.percent=67,.tag_count=11,
         .total_samples=44,.result=3,.risk_score=255,.flags=3,
-        .state_version=42,.tags_expected=25,.message="Capturing signal data"};
+        .state_version=42,.tags_expected=25,.message="Capturing signal data",
+        .mode_label="S4 CHECKPOINT",.scan_direction=2,.color=2,.armed=1};
     for (uint8_t cmd=1;cmd<=8;cmd++) {
         assert(clearchain_display_encode(packet,sizeof(packet),cmd,0x12345678,&state)==CLEARCHAIN_DISPLAY_MAX_PACKET_SIZE);
         assert(clearchain_display_decode(packet,sizeof(packet),&type,&seq,&decoded)==0);
         assert(type==cmd && seq==0x12345678 && decoded.total_samples==44 && decoded.risk_score==255);
         assert(decoded.state_version==42 && decoded.tags_expected==25 &&
                strcmp(decoded.message,"Capturing signal data")==0);
+        assert(!strcmp(decoded.mode_label,"S4 CHECKPOINT") && decoded.scan_direction==2 && decoded.color==2 && decoded.armed==1);
         for (size_t n=0;n<sizeof(packet);n++) {
             assert(clearchain_display_decode(packet,n,&type,&seq,&decoded)<0);
         }
@@ -72,6 +74,32 @@ static void test_r200(void)
     assert(memcmp(frame,multi,10)==0);
     assert(r200_protocol_build_multi_inventory(frame,128,&n,0)<0);
     assert(r200_protocol_build_stop_inventory(frame,128,&n)==0 && n==7 && frame[5]==0x28);
+    const uint8_t get_power_command[]={0xAA,0x00,0xB7,0x00,0x00,0xB7,0xDD};
+    const uint8_t set_power_command[]={0xAA,0x00,0xB6,0x00,0x02,0x07,0xD0,0x8F,0xDD};
+    const uint8_t get_power_reply[]={0xAA,0x01,0xB7,0x00,0x02,0x07,0xD0,0x91,0xDD};
+    const uint8_t set_power_reply[]={0xAA,0x01,0xB6,0x00,0x01,0x00,0xB8,0xDD};
+    const uint16_t target_power_cdbm=2000;
+    uint16_t power_cdbm=0;
+    assert(r200_protocol_build_get_power(frame,sizeof(frame),&n)==0);
+    assert(n==sizeof(get_power_command) && memcmp(frame,get_power_command,n)==0);
+    assert(r200_protocol_build_set_power(frame,sizeof(frame),&n,target_power_cdbm)==0);
+    assert(n==sizeof(set_power_command) && memcmp(frame,set_power_command,n)==0);
+    assert(r200_protocol_parse_get_power(get_power_reply,sizeof(get_power_reply),&power_cdbm)==0);
+    assert(power_cdbm==target_power_cdbm);
+    assert(r200_protocol_parse_set_power(set_power_reply,sizeof(set_power_reply))==0);
+    enum {
+        POWER_REPLY_CHECKSUM_OFFSET = 2,
+        SET_POWER_REPLY_STATUS_INDEX = 5,
+        SET_POWER_FAILURE_STATUS = 1
+    };
+    memcpy(frame,get_power_reply,sizeof(get_power_reply));
+    frame[sizeof(get_power_reply)-POWER_REPLY_CHECKSUM_OFFSET]^=1;
+    assert(r200_protocol_parse_get_power(frame,sizeof(get_power_reply),&power_cdbm)<0);
+    memcpy(frame,set_power_reply,sizeof(set_power_reply));
+    frame[SET_POWER_REPLY_STATUS_INDEX]=SET_POWER_FAILURE_STATUS;
+    frame[sizeof(set_power_reply)-POWER_REPLY_CHECKSUM_OFFSET]+=
+        SET_POWER_FAILURE_STATUS;
+    assert(r200_protocol_parse_set_power(frame,sizeof(set_power_reply))<0);
     uint8_t golden[]={0xAA,0x02,0x22,0,0x11,0xC9,0x34,0,0x30,0x75,0x1F,0xEB,0x70,0x5C,0x59,0x04,0xE3,0xD5,0x0D,0x70,0x3A,0x76,0xEF,0xDD};
     char epc[65]; int8_t rssi;
     assert(r200_protocol_parse_inventory(golden,sizeof(golden),epc,sizeof(epc),&rssi)==0);

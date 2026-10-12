@@ -4,8 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CLEARCHAIN_BATCH_ID_SIZE 64U
-#define CLEARCHAIN_MESSAGE_SIZE 96U
+#define CLEARCHAIN_BATCH_ID_SIZE 65U
+#define CLEARCHAIN_MESSAGE_SIZE 64U
+#define CLEARCHAIN_MODE_LABEL_SIZE 24U
 
 typedef enum {
     CLEARCHAIN_DEVICE_MODE_NONE = 0,
@@ -34,6 +35,10 @@ typedef enum {
 
 typedef struct {
     uint32_t state_version;
+    int armed;
+    char mode_label[CLEARCHAIN_MODE_LABEL_SIZE];
+    uint8_t scan_direction; /* 0 null, 1 IN, 2 OUT, 3 MIXED */
+    uint8_t color;          /* 0 null, 1 GREEN, 2 ORANGE, 3 RED */
     clearchain_device_mode_t mode;
     clearchain_device_phase_t phase;
     clearchain_device_status_t screen_status;
@@ -49,5 +54,7 @@ typedef struct {
 int clearchain_device_state_parse(const char *json, clearchain_device_state_t *out);
 const char *clearchain_device_mode_name(clearchain_device_mode_t mode);
 const char *clearchain_device_access_code(clearchain_device_mode_t mode);
+/* v2: stopped/DONE sessions never authorize reader posts. CP permits no batch. */
+int clearchain_device_state_can_scan(const clearchain_device_state_t *state);
 
 #endif

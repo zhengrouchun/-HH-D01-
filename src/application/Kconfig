@@ -27,12 +27,27 @@ config CLEARCHAIN_DEVICE_API
     depends on CLEARCHAIN_DISPLAY_SLE_SERVER
 
 config CLEARCHAIN_DEVICE_HOST
-    string "Raspberry Pi / mock API IPv4 address"
+    string "ClearChain backend IPv4 address (laptop LAN IP)"
     default "192.168.4.1"
     depends on CLEARCHAIN_DEVICE_API
 
+config CLEARCHAIN_DEVICE_BENCH
+    bool "Offline dual-board bench (real RFID, no backend verdict)"
+    default n
+    depends on CLEARCHAIN_DEVICE_API
+
+config CLEARCHAIN_WIFI_SSID
+    string "Deployment Wi-Fi SSID (empty keeps existing local setting)"
+    default ""
+    depends on CLEARCHAIN_DEVICE_API
+
+config CLEARCHAIN_WIFI_PASSWORD
+    string "Deployment Wi-Fi password"
+    default ""
+    depends on CLEARCHAIN_DEVICE_API
+
 config CLEARCHAIN_DEVICE_PORT
-    int "Raspberry Pi / mock API HTTP port"
+    int "ClearChain backend HTTP port"
     default 5000
     range 1 65535
     depends on CLEARCHAIN_DEVICE_API

@@ -151,6 +151,9 @@ static errcode_t example_get_match_network(const char *expected_ssid,
 }
 
 struct netif *netif_p = NULL;
+static int g_cc_sta_enabled;
+static int g_cc_events_registered;
+int wifi_station_connected(void) { return g_connected; }
 
 // 连接到热点
 errcode_t wifi_connectTo_AP(const char *expected_ssid, const char *key)
@@ -161,17 +164,21 @@ errcode_t wifi_connectTo_AP(const char *expected_ssid, const char *key)
     wifi_linked_info_stru wifi_status;
     uint8_t index = 0;
     /* 注册 Wi-Fi 事件 */
-    if(wifi_register_event_cb(&g_defaultWifiEventListener) != ERRCODE_SUCC){
-      osal_printk("wifi_register_event_cb error\r\n");
+    if (!g_cc_events_registered) {
+        if (wifi_register_event_cb(&g_defaultWifiEventListener) != ERRCODE_SUCC) {
+            osal_printk("wifi_register_event_cb error\r\n");
+            return ERRCODE_FAIL;
+        }
+        g_cc_events_registered=1;
+        (void)osal_msleep(5000); /* Wait once for Wi-Fi initialization. */
     }
-    
-    (void)osal_msleep(5000); /* 延时5s，等待wifi初始化完毕 */
     osal_printk("STA try enable.\r\n");
     /* 创建STA */
-    if (wifi_sta_enable() != ERRCODE_SUCC) {
+    if (!g_cc_sta_enabled && wifi_sta_enable() != ERRCODE_SUCC) {
       osal_printk("sta enbale fail !\r\n");
         return ERRCODE_FAIL;
     }
+    g_cc_sta_enabled=1;
 
     do {
       osal_printk("Start Scan !\r\n");

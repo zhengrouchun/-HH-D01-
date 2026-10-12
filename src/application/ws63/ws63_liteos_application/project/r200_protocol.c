@@ -8,13 +8,17 @@
 int r200_protocol_build_multi_inventory(uint8_t *frame, size_t frame_size,
                                         size_t *frame_length, uint16_t rounds)
 {
-    uint8_t command[] = {0xAA, 0x00, 0x27, 0x00, 0x03, 0x22, 0, 0, 0, 0xDD};
-    if (frame == NULL || frame_length == NULL || frame_size < sizeof(command) || rounds == 0U) {
+    uint8_t command[] = {0xAA, 0x00, R200_NATIVE_MULTI_COMMAND, 0x00,
+                         R200_MULTI_PAYLOAD_LENGTH, R200_MULTI_INVENTORY_PARAMETER,
+                         0, 0, 0, 0xDD};
+    if (frame == NULL || frame_length == NULL || frame_size < sizeof(command) ||
+        rounds < R200_MIN_MULTI_ROUNDS) {
         return -1;
     }
     command[6] = (uint8_t)(rounds >> 8);
     command[7] = (uint8_t)rounds;
-    command[8] = (uint8_t)(0x27U + 0x03U + 0x22U + command[6] + command[7]);
+    command[8] = (uint8_t)(R200_NATIVE_MULTI_COMMAND + R200_MULTI_PAYLOAD_LENGTH +
+                           R200_MULTI_INVENTORY_PARAMETER + command[6] + command[7]);
     memcpy(frame, command, sizeof(command));
     *frame_length = sizeof(command);
     return 0;
@@ -23,7 +27,8 @@ int r200_protocol_build_multi_inventory(uint8_t *frame, size_t frame_size,
 int r200_protocol_build_stop_inventory(uint8_t *frame, size_t frame_size,
                                        size_t *frame_length)
 {
-    const uint8_t command[] = {0xAA, 0x00, 0x28, 0x00, 0x00, 0x28, 0xDD};
+    const uint8_t command[] = {0xAA, 0x00, R200_NATIVE_STOP_COMMAND, 0x00,
+                               0x00, R200_NATIVE_STOP_COMMAND, 0xDD};
     if (frame == NULL || frame_length == NULL || frame_size < sizeof(command)) { return -1; }
     memcpy(frame, command, sizeof(command));
     *frame_length = sizeof(command);
@@ -86,6 +91,106 @@ static uint8_t r200_checksum(const uint8_t *data, size_t length)
 
 
     return (uint8_t)sum;
+}
+
+/* The manual encodes transmit power in hundredths of a dBm, high byte first. */
+enum {
+    R200_FRAME_HEADER_INDEX = 0,
+    R200_FRAME_TYPE_INDEX = 1,
+    R200_FRAME_COMMAND_INDEX = 2,
+    R200_FRAME_LENGTH_HIGH_INDEX = 3,
+    R200_FRAME_LENGTH_LOW_INDEX = 4,
+    R200_FRAME_PARAMETER_INDEX = 5,
+    R200_FRAME_END_OFFSET = 1,
+    R200_FRAME_CHECKSUM_OFFSET = 2,
+    R200_CHECKSUM_EXCLUDED_BYTES = 3, /* Header, checksum, and end are outside the checksum input. */
+    R200_POWER_HIGH_BYTE_SHIFT = 8,
+    R200_GET_POWER_FRAME_LENGTH = 7,
+    R200_SET_POWER_FRAME_LENGTH = 9,
+    R200_GET_POWER_REPLY_LENGTH = 9,
+    R200_SET_POWER_REPLY_LENGTH = 8,
+    R200_EMPTY_PAYLOAD_LENGTH = 0,
+    R200_SET_POWER_PARAMETER_LENGTH = 2,
+    R200_POWER_REPLY_PARAMETER_LENGTH = 2,
+    R200_SET_REPLY_PARAMETER_LENGTH = 1,
+    R200_COMMAND_SUCCESS = 0
+};
+
+int r200_protocol_build_get_power(uint8_t *frame, size_t frame_size,
+                                  size_t *frame_length)
+{
+    const uint8_t command[R200_GET_POWER_FRAME_LENGTH] = {
+        R200_HEADER, R200_TYPE_COMMAND, R200_GET_POWER_COMMAND,
+        R200_EMPTY_PAYLOAD_LENGTH, R200_EMPTY_PAYLOAD_LENGTH,
+        R200_GET_POWER_COMMAND, R200_END
+    };
+    if (frame == NULL || frame_length == NULL || frame_size < sizeof(command)) { return -1; }
+    memcpy(frame, command, sizeof(command));
+    *frame_length = sizeof(command);
+    return R200_COMMAND_SUCCESS;
+}
+
+int r200_protocol_build_set_power(uint8_t *frame, size_t frame_size,
+                                  size_t *frame_length, uint16_t power_cdbm)
+{
+    uint8_t command[R200_SET_POWER_FRAME_LENGTH] = {
+        R200_HEADER, R200_TYPE_COMMAND, R200_SET_POWER_COMMAND,
+        R200_EMPTY_PAYLOAD_LENGTH, R200_SET_POWER_PARAMETER_LENGTH,
+        (uint8_t)(power_cdbm >> R200_POWER_HIGH_BYTE_SHIFT), (uint8_t)power_cdbm,
+        R200_EMPTY_PAYLOAD_LENGTH, R200_END
+    };
+    if (frame == NULL || frame_length == NULL || frame_size < sizeof(command)) { return -1; }
+    command[sizeof(command) - R200_FRAME_CHECKSUM_OFFSET] =
+        r200_checksum(&command[R200_FRAME_TYPE_INDEX],
+                      sizeof(command) - R200_CHECKSUM_EXCLUDED_BYTES);
+    memcpy(frame, command, sizeof(command));
+    *frame_length = sizeof(command);
+    return R200_COMMAND_SUCCESS;
+}
+
+static int r200_protocol_power_reply_valid(const uint8_t *frame, size_t frame_length,
+                                           uint8_t command, size_t expected_length,
+                                           uint8_t parameter_length)
+{
+    if (frame == NULL || frame_length != expected_length ||
+        frame[R200_FRAME_HEADER_INDEX] != R200_HEADER ||
+        frame[R200_FRAME_TYPE_INDEX] != R200_TYPE_RESPONSE ||
+        frame[R200_FRAME_COMMAND_INDEX] != command ||
+        frame[R200_FRAME_LENGTH_HIGH_INDEX] != R200_EMPTY_PAYLOAD_LENGTH ||
+        frame[R200_FRAME_LENGTH_LOW_INDEX] != parameter_length ||
+        frame[frame_length - R200_FRAME_END_OFFSET] != R200_END ||
+        frame[frame_length - R200_FRAME_CHECKSUM_OFFSET] !=
+            r200_checksum(&frame[R200_FRAME_TYPE_INDEX],
+                          frame_length - R200_CHECKSUM_EXCLUDED_BYTES)) {
+        return -1;
+    }
+    return R200_COMMAND_SUCCESS;
+}
+
+int r200_protocol_parse_get_power(const uint8_t *frame, size_t frame_length,
+                                  uint16_t *power_cdbm)
+{
+    if (power_cdbm == NULL ||
+        r200_protocol_power_reply_valid(frame, frame_length, R200_GET_POWER_COMMAND,
+                                        R200_GET_POWER_REPLY_LENGTH,
+                                        R200_POWER_REPLY_PARAMETER_LENGTH) != R200_COMMAND_SUCCESS) {
+        return -1;
+    }
+    *power_cdbm = (uint16_t)(((uint16_t)frame[R200_FRAME_PARAMETER_INDEX] <<
+                              R200_POWER_HIGH_BYTE_SHIFT) |
+                             frame[R200_FRAME_PARAMETER_INDEX + 1]);
+    return R200_COMMAND_SUCCESS;
+}
+
+int r200_protocol_parse_set_power(const uint8_t *frame, size_t frame_length)
+{
+    if (r200_protocol_power_reply_valid(frame, frame_length, R200_SET_POWER_COMMAND,
+                                        R200_SET_POWER_REPLY_LENGTH,
+                                        R200_SET_REPLY_PARAMETER_LENGTH) != R200_COMMAND_SUCCESS ||
+        frame[R200_FRAME_PARAMETER_INDEX] != R200_COMMAND_SUCCESS) {
+        return -1;
+    }
+    return R200_COMMAND_SUCCESS;
 }
 
 
@@ -317,7 +422,7 @@ int r200_protocol_parse_inventory(const uint8_t *frame,
      */
 
     if(frame[1] != R200_TYPE_NOTIFY ||
-       (frame[2] != R200_COMMAND_INVENTORY && frame[2] != 0x27U) ||
+       (frame[2] != R200_COMMAND_INVENTORY && frame[2] != R200_NATIVE_MULTI_COMMAND) ||
        payload_length < 5)
     {
 

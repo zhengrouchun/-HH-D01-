@@ -19,7 +19,8 @@ int clearchain_display_scan_started(uint8_t stage);
 int clearchain_display_scan_update(uint8_t stage, uint8_t percent, uint8_t tags, uint16_t samples);
 int clearchain_display_scan_complete(uint8_t stage, uint8_t tags, uint16_t samples);
 int clearchain_display_show_error(uint8_t stage, uint16_t error);
-int clearchain_display_publish_device_state(const clearchain_device_state_t *state);
+int clearchain_display_publish_device_state(const clearchain_device_state_t *state,
+                                            uint16_t local_samples);
 void clearchain_display_set_backend_offline(int offline);
 #else
 static inline int clearchain_display_link_init(void) { return 0; }
@@ -37,8 +38,9 @@ static inline int clearchain_display_scan_complete(uint8_t stage, uint8_t tags, 
 { (void)stage; (void)tags; (void)samples; return 0; }
 static inline int clearchain_display_show_error(uint8_t stage, uint16_t error)
 { (void)stage; (void)error; return 0; }
-static inline int clearchain_display_publish_device_state(const clearchain_device_state_t *state)
-{ (void)state; return 0; }
+static inline int clearchain_display_publish_device_state(const clearchain_device_state_t *state,
+                                                         uint16_t local_samples)
+{ (void)state; (void)local_samples; return 0; }
 static inline void clearchain_display_set_backend_offline(int offline) { (void)offline; }
 #endif
 

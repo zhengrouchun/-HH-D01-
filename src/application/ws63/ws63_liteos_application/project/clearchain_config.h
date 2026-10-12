@@ -6,9 +6,17 @@
 // WiFi配置
 // =============================
 
+#if defined(CONFIG_CLEARCHAIN_DEVICE_API) && defined(CONFIG_CLEARCHAIN_UPLOAD_ENABLED) && CONFIG_CLEARCHAIN_UPLOAD_ENABLED
+#define WIFI_SSID_NAME CONFIG_CLEARCHAIN_WIFI_SSID
+#else
 #define WIFI_SSID_NAME "stu.gpnu.edu.cn"
+#endif
 
+#if defined(CONFIG_CLEARCHAIN_DEVICE_API) && defined(CONFIG_CLEARCHAIN_UPLOAD_ENABLED) && CONFIG_CLEARCHAIN_UPLOAD_ENABLED
+#define WIFI_SSID_KEY CONFIG_CLEARCHAIN_WIFI_PASSWORD
+#else
 #define WIFI_SSID_KEY "zrc050609"
+#endif
 
 
 // =============================

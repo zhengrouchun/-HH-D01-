@@ -4,7 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define R200_UART_RING_BUFFER_SIZE 1024U
+/* Hold a burst of native multi-poll notifications while the task posts state. */
+#define R200_UART_RING_BUFFER_SIZE 4096U
 
 int r200_uart_init(void);
 int r200_uart_write(const uint8_t *data, size_t length);

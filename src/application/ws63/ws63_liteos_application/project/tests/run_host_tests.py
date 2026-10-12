@@ -44,3 +44,33 @@ result=subprocess.run([str(exe)],check=True,capture_output=True,text=True,env=en
 print(result.stdout,end='')
 with (OUT/'results.txt').open('a',encoding='utf8') as log:
     log.write(result.stdout)
+
+exe=OUT/'device_flow_tests.exe'
+cmd=[str(GCC),'-std=c99','-Wall','-Wextra','-Werror','-DCONFIG_CLEARCHAIN_DEVICE_API=1',
+     '-I'+str(TESTS/'stubs'),'-I'+str(PROJECT),'-I'+str(SDK/'open_source/cjson/cjson'),
+     str(TESTS/'test_device_flow.c'),str(PROJECT/'clearchain_device_session.c'),
+     str(PROJECT/'clearchain_device_state.c'),str(PROJECT/'r200_protocol.c'),
+     str(SDK/'open_source/cjson/cjson/cJSON.c'),'-o',str(exe)]
+subprocess.run(cmd,check=True,env=env)
+result=subprocess.run([str(exe)],check=True,capture_output=True,text=True,env=env)
+print(result.stdout,end='')
+with (OUT/'results.txt').open('a',encoding='utf8') as log: log.write(result.stdout)
+
+exe=OUT/'ui_state_tests.exe'
+cmd=[str(GCC),'-std=c99','-Wall','-Wextra','-Werror',
+     '-I'+str(TESTS/'stubs'),'-I'+str(PROJECT),str(TESTS/'test_ui_state.c'),'-o',str(exe)]
+subprocess.run(cmd,check=True,env=env)
+result=subprocess.run([str(exe)],check=True,capture_output=True,text=True,env=env)
+print(result.stdout,end='')
+with (OUT/'results.txt').open('a',encoding='utf8') as log: log.write(result.stdout)
+
+exe=OUT/'device_transport_tests.exe'
+cmd=[str(GCC),'-std=c99','-Wall','-Wextra','-Werror',
+     '-DCONFIG_CLEARCHAIN_UPLOAD_ENABLED=1','-DCONFIG_CLEARCHAIN_BACKEND_CONFIRMED=1',
+     '-I'+str(TESTS/'stubs'),'-I'+str(PROJECT),'-I'+str(SDK/'open_source/cjson/cjson'),
+     str(TESTS/'test_device_transport.c'),str(PROJECT/'clearchain_device_http.c'),
+     str(PROJECT/'clearchain_device_state.c'),str(SDK/'open_source/cjson/cjson/cJSON.c'),'-o',str(exe)]
+subprocess.run(cmd,check=True,env=env)
+result=subprocess.run([str(exe)],check=True,capture_output=True,text=True,env=env)
+print(result.stdout,end='')
+with (OUT/'results.txt').open('a',encoding='utf8') as log: log.write(result.stdout)

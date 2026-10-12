@@ -14,9 +14,12 @@ typedef struct {
 int clearchain_device_http_get_state(clearchain_device_state_t *state);
 int clearchain_device_http_select_mode(clearchain_device_mode_t mode,
                                        clearchain_device_state_t *returned_state);
+int clearchain_device_http_command(const char *command, clearchain_device_mode_t mode,
+                                   clearchain_device_state_t *returned_state);
 int clearchain_device_http_post_scan(const clearchain_device_state_t *state,
                                      const clearchain_device_reading_t *readings,
-                                     size_t count, int final);
+                                     size_t count, int final,
+                                     clearchain_device_state_t *returned_state);
 
 /* Pure formatter for host tests; caller owns the returned cJSON allocation. */
 char *clearchain_device_http_scan_json(const clearchain_device_state_t *state,

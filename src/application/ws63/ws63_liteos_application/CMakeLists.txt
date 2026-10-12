@@ -54,6 +54,7 @@ elseif(NOT DEFINED CONFIG_CLEARCHAIN_DISPLAY_SLE_CLIENT)
     if(CONFIG_CLEARCHAIN_DEVICE_API)
         list(APPEND SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_app.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_session.c
             ${CMAKE_CURRENT_SOURCE_DIR}/project/clearchain_device_http.c)
     else()
         list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/project/tcp_client_demo.c)

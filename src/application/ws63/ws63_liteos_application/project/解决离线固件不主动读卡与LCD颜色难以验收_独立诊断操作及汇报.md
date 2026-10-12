@@ -120,7 +120,9 @@ LCD SDO/MISO、触摸、SD卡 → 不接
 
 板2恢复：
 
-`output/clearchain/_flash_ready/ws63-liteos-app_all_BOARDB_PEER_CLEANUP_20261005-213507.fwpkg`
+`output/clearchain/_flash_ready/ws63-liteos-app_all_BOARDB_SLE_LCD_INV_OFF_20261006_a5b21d05.fwpkg`
+
+2026-10-06实测更新：LCD模拟页面的反相OFF显示正确，正常CLIENT已同步OFF并生成上述新包。板1R200附件已实际读出EPC/RSSI。原本本文件的“待实板验证”描述记录的是诊断包交付时的状态；最新结果、真假数据区分、全部实测EPC及双板恢复步骤见《解决ST7796颜色反相与确认R200真实读卡_RSSI验收及双板恢复流程.md》。新正常板2包仍待烧录联合验收。
 
 各自等待烧录成功，再启动双板，核对原SERVER/CLIENT标记及SLE连接、服务发现和状态接收。诊断包只是临时分项测试；不能拿R200-only与LCD-only组合等待SLE连接。
 

@@ -5,6 +5,9 @@
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
 #include "my_wifi_tcp.h"
+#include "soc_osal.h"
+#include "systick.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +26,25 @@ static int send_all(int fd, const char *data, size_t length)
     return 0;
 }
 
-/* A bounded HTTP/1.1 client for the Pi's JSON API. No implicit redirect follows. */
+static int bounded_connect(int fd, const struct sockaddr *address, unsigned int length)
+{
+    unsigned long nonblocking=1;
+    fd_set writable;
+    struct timeval timeout={2,0};
+    int error=0; socklen_t error_size=sizeof(error);
+    /* WS63 exposes ioctlsocket through lwip_ioctl; POSIX ioctl is absent. */
+    if (lwip_ioctl(fd,FIONBIO,&nonblocking)<0) { return -1; }
+    if (connect(fd,address,length)<0) {
+        if (errno!=EINPROGRESS && errno!=EWOULDBLOCK) { return -1; }
+        FD_ZERO(&writable); FD_SET(fd,&writable);
+        if (select(fd+1,NULL,&writable,NULL,&timeout)<=0 ||
+            getsockopt(fd,SOL_SOCKET,SO_ERROR,&error,&error_size)<0 || error!=0) { return -1; }
+    }
+    nonblocking=0;
+    return lwip_ioctl(fd,FIONBIO,&nonblocking);
+}
+
+/* A bounded HTTP/1.1 client for the backend JSON API. No implicit redirect follows. */
 static int exchange(const char *method, const char *path, const char *body,
                     char *response_body, size_t response_size)
 {
@@ -37,6 +58,7 @@ static int exchange(const char *method, const char *path, const char *body,
     size_t body_size = body == NULL ? 0U : strlen(body);
     int fd, n, status = -1;
     long content_length = -1;
+    uint64_t started;
     if (!CLEARCHAIN_UPLOAD_ALLOWED || method == NULL || path == NULL ||
         response_body == NULL || response_size == 0U ||
         CLEARCHAIN_DEVICE_HOST[0] == '\0') { return -1; }
@@ -54,7 +76,8 @@ static int exchange(const char *method, const char *path, const char *body,
         (void)memcpy(&address.sin_addr, resolved->h_addr_list[0], sizeof(address.sin_addr));
     }
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    if (connect(fd, (struct sockaddr *)&address, sizeof(address)) < 0) { goto done; }
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    if (bounded_connect(fd, (struct sockaddr *)&address, sizeof(address)) < 0) { goto done; }
     n = snprintf(header, sizeof(header),
         "%s %s HTTP/1.1\r\nHost: %s:%d\r\nContent-Type: application/json\r\n"
         "Content-Length: %u\r\nConnection: close\r\n\r\n",
@@ -62,7 +85,9 @@ static int exchange(const char *method, const char *path, const char *body,
         (unsigned int)body_size);
     if (n < 0 || (size_t)n >= sizeof(header) || send_all(fd, header, (size_t)n) != 0 ||
         (body_size != 0U && send_all(fd, body, body_size) != 0)) { goto done; }
+    started=uapi_systick_get_ms();
     while (used < sizeof(response) - 1U) {
+        if (uapi_systick_get_ms()-started>=2000U) { goto done; }
         n = recv(fd, response + used, (int)(sizeof(response) - 1U - used), 0);
         if (n < 0) { goto done; }
         if (n == 0) { break; }
@@ -84,9 +109,23 @@ static int exchange(const char *method, const char *path, const char *body,
         goto done;
     }
     payload += 4;
-    if (content_length >= 0 && strlen(payload) < (size_t)content_length) { status = -1; goto done; }
+    if (content_length >= 0) {
+        if ((size_t)content_length>=response_size || strlen(payload)<(size_t)content_length) {
+            status=-1; goto done;
+        }
+        payload[content_length]='\0';
+    }
     if (strlen(payload) >= response_size) { status = -1; goto done; }
     (void)strcpy(response_body, payload);
+    if (status!=200) {
+        cJSON *failure=cJSON_Parse(payload);
+        const cJSON *code=cJSON_GetObjectItemCaseSensitive(failure,"error");
+        const cJSON *message=cJSON_GetObjectItemCaseSensitive(failure,"message");
+        osal_printk("[DEVICE HTTP] status=%d error=%.60s message=%.60s\r\n",status,
+            cJSON_IsString(code)?code->valuestring:"(none)",
+            cJSON_IsString(message)?message->valuestring:"(none)");
+        cJSON_Delete(failure);
+    }
 done:
     (void)TCP_CloseClient(fd);
     return status;
@@ -100,7 +139,7 @@ int clearchain_device_http_get_state(clearchain_device_state_t *state)
     return status;
 }
 
-int clearchain_device_http_select_mode(clearchain_device_mode_t mode,
+int clearchain_device_http_command(const char *command, clearchain_device_mode_t mode,
                                        clearchain_device_state_t *returned_state)
 {
     cJSON *root;
@@ -109,12 +148,16 @@ int clearchain_device_http_select_mode(clearchain_device_mode_t mode,
     const char *name = clearchain_device_mode_name(mode);
     const char *code = clearchain_device_access_code(mode);
     int status;
-    if (name == NULL || code == NULL || returned_state == NULL) { return -1; }
+    int select_mode = command != NULL && strcmp(command, "SELECT_MODE") == 0;
+    if (command == NULL || returned_state == NULL ||
+        (select_mode && (name == NULL || code == NULL)) ||
+        (!select_mode && strcmp(command,"STOP_SCAN") && strcmp(command,"START_SCAN") &&
+         strcmp(command,"RESET"))) { return -1; }
     root = cJSON_CreateObject();
     if (root == NULL) { return -1; }
-    if (cJSON_AddStringToObject(root, "command", "SELECT_MODE") == NULL ||
-        cJSON_AddStringToObject(root, "mode", name) == NULL ||
-        cJSON_AddStringToObject(root, "access_code", code) == NULL ||
+    if (cJSON_AddStringToObject(root, "command", command) == NULL ||
+        (select_mode && cJSON_AddStringToObject(root, "mode", name) == NULL) ||
+        (select_mode && cJSON_AddStringToObject(root, "access_code", code) == NULL) ||
         cJSON_AddStringToObject(root, "source", "DEVICE") == NULL) {
         cJSON_Delete(root); return -1;
     }
@@ -127,6 +170,10 @@ int clearchain_device_http_select_mode(clearchain_device_mode_t mode,
     return status;
 }
 
+int clearchain_device_http_select_mode(clearchain_device_mode_t mode,
+                                       clearchain_device_state_t *returned_state)
+{ return clearchain_device_http_command("SELECT_MODE", mode, returned_state); }
+
 char *clearchain_device_http_scan_json(const clearchain_device_state_t *state,
                                       const clearchain_device_reading_t *readings,
                                       size_t count, int final)
@@ -134,15 +181,15 @@ char *clearchain_device_http_scan_json(const clearchain_device_state_t *state,
     cJSON *root, *array;
     const char *name, *code;
     char *json = NULL;
-    if (state == NULL || readings == NULL || count == 0U || count > DEVICE_READINGS_PER_POST ||
-        state->batch_id[0] == '\0' ||
+    if (!clearchain_device_state_can_scan(state) || (count != 0U && readings == NULL) ||
+        (!final && count == 0U) || count > DEVICE_READINGS_PER_POST ||
         (name = clearchain_device_mode_name(state->mode)) == NULL ||
         (code = clearchain_device_access_code(state->mode)) == NULL) { return NULL; }
     root = cJSON_CreateObject();
     array = cJSON_CreateArray();
     if (root == NULL || array == NULL) { cJSON_Delete(root); cJSON_Delete(array); return NULL; }
     if (cJSON_AddStringToObject(root, "mode", name) == NULL ||
-        cJSON_AddStringToObject(root, "batch_id", state->batch_id) == NULL ||
+        (state->batch_id[0] != '\0' && cJSON_AddStringToObject(root, "batch_id", state->batch_id) == NULL) ||
         cJSON_AddStringToObject(root, "access_code", code) == NULL ||
         cJSON_AddBoolToObject(root, "final", final != 0) == NULL ||
         !cJSON_AddItemToObject(root, "readings", array)) {
@@ -167,13 +214,15 @@ done:
 
 int clearchain_device_http_post_scan(const clearchain_device_state_t *state,
                                      const clearchain_device_reading_t *readings,
-                                     size_t count, int final)
+                                     size_t count, int final,
+                                     clearchain_device_state_t *returned_state)
 {
     char response[DEVICE_RESPONSE_SIZE];
     char *request = clearchain_device_http_scan_json(state, readings, count, final);
     int status;
-    if (request == NULL) { return -1; }
+    if (request == NULL || returned_state == NULL) { cJSON_free(request); return -1; }
     status = exchange("POST", "/device/scan", request, response, sizeof(response));
     cJSON_free(request);
+    if (status == 200 && clearchain_device_state_parse(response, returned_state) != 0) { return -1; }
     return status;
 }

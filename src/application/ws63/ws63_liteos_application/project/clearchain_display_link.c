@@ -124,7 +124,8 @@ int clearchain_display_show_result(clearchain_display_result_t result, uint8_t r
     return clearchain_display_update(CLEARCHAIN_DISPLAY_CMD_RESULT, stage, 0, 0, 0, result, risk_score, 0);
 }
 
-int clearchain_display_publish_device_state(const clearchain_device_state_t *state)
+int clearchain_display_publish_device_state(const clearchain_device_state_t *state,
+                                            uint16_t local_samples)
 {
     unsigned int irq;
     if (state == NULL || state->mode > CLEARCHAIN_DEVICE_MODE_CP || state->phase > CLEARCHAIN_PHASE_ERROR ||
@@ -135,7 +136,7 @@ int clearchain_display_publish_device_state(const clearchain_device_state_t *sta
     g_state.phase = (uint8_t)state->phase;
     g_state.percent = state->progress_percent < 0 ? 0U : (uint8_t)state->progress_percent;
     g_state.tag_count = (uint8_t)state->tags_read;
-    g_state.total_samples = 0U;
+    g_state.total_samples = local_samples;
     g_state.tags_expected = state->tags_expected < 0 ? UINT16_MAX : (uint16_t)state->tags_expected;
     g_state.result = state->screen_status == CLEARCHAIN_STATUS_APPROVED ? CLEARCHAIN_DISPLAY_RESULT_APPROVED :
         (state->screen_status == CLEARCHAIN_STATUS_MONITOR ? CLEARCHAIN_DISPLAY_RESULT_MONITOR :
@@ -146,6 +147,11 @@ int clearchain_display_publish_device_state(const clearchain_device_state_t *sta
     g_state.flags = (CLEARCHAIN_UPLOAD_ALLOWED ? 0U : CLEARCHAIN_DISPLAY_FLAG_UPLOAD_DISABLED) |
         (state->progress_percent < 0 ? CLEARCHAIN_DISPLAY_FLAG_PROGRESS_UNKNOWN : 0U);
     g_state.state_version = state->state_version;
+    g_state.armed = (uint8_t)state->armed;
+    g_state.scan_direction = state->scan_direction;
+    g_state.color = state->color;
+    (void)memcpy(g_state.mode_label,state->mode_label,sizeof(g_state.mode_label));
+    if (state->screen_status==CLEARCHAIN_STATUS_NONE) { g_state.risk_score=CLEARCHAIN_RISK_SCORE_UNKNOWN; }
     (void)strncpy(g_state.message, state->message, sizeof(g_state.message) - 1U);
     g_state.message[sizeof(g_state.message) - 1U] = '\0';
     g_command = CLEARCHAIN_DISPLAY_CMD_FULL_STATE_SNAPSHOT;
@@ -157,9 +163,10 @@ int clearchain_display_publish_device_state(const clearchain_device_state_t *sta
 void clearchain_display_set_backend_offline(int offline)
 {
     unsigned int irq = osal_irq_lock();
+    uint8_t previous_flags = g_state.flags;
     if (offline) { g_state.flags |= CLEARCHAIN_DISPLAY_FLAG_BACKEND_OFFLINE; }
     else { g_state.flags &= (uint8_t)~CLEARCHAIN_DISPLAY_FLAG_BACKEND_OFFLINE; }
-    g_generation++;
+    if (g_state.flags != previous_flags) { g_generation++; }
     osal_irq_restore(irq);
 }
 bool clearchain_display_is_connected(void) { return g_clearchain_display_connected; }

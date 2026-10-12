@@ -21,11 +21,18 @@ int recv(int f,void *p,int n,int g)
 struct hostent *gethostbyname(const char *s) { (void)s;network_calls++;return NULL; }
 int TCP_CloseClient(int fd) { (void)fd;network_calls++;return 0; }
 
+int lwip_ioctl(int f,long c,void *v) { (void)f;(void)c;(void)v;return -1; }
+int select(int n,fd_set *r,fd_set *w,fd_set *e,struct timeval *t) { (void)n;(void)r;(void)w;(void)e;(void)t;return -1; }
+int getsockopt(int f,int l,int o,void *v,socklen_t *n) { (void)f;(void)l;(void)o;(void)v;(void)n;return -1; }
+uint64_t uapi_systick_get_ms(void) { return 0; }
+int osal_printk(const char *f,...) { (void)f;return 0; }
+
 int main(void)
 {
     clearchain_device_state_t state;
     clearchain_device_reading_t samples[2] = {{"E2801160",-52},{"E2801160",-58}};
-    const char *json = "{\"ok\":true,\"state_version\":14,\"mode\":\"S1\","
+    const char *json = "{\"armed\":true,\"mode_label\":\"S1 FACTORY\",\"color\":null,\"scan_direction\":null,"
+        "\"ok\":true,\"state_version\":14,\"mode\":\"S1\","
         "\"phase\":\"SCANNING\",\"batch_id\":\"BATCH-2026-001\",\"tags_read\":1,"
         "\"tags_expected\":null,\"progress_percent\":null,\"screen_status\":\"NONE\","
         "\"risk_percent\":0,\"message\":\"Capturing...\"}";
@@ -43,10 +50,15 @@ int main(void)
     assert(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(readings,0),"rssi_dbm")->valueint==-52);
     assert(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(readings,1),"rssi_dbm")->valueint==-58);
     cJSON_Delete(root);cJSON_free(body);
-    assert(clearchain_device_http_scan_json(&state,samples,0,1)==NULL);
+    body=clearchain_device_http_scan_json(&state,NULL,0,1); assert(body!=NULL); cJSON_free(body);
+    assert(clearchain_device_http_scan_json(&state,NULL,0,0)==NULL);
+    state.armed=0; assert(clearchain_device_http_scan_json(&state,samples,1,0)==NULL); state.armed=1;
     state.batch_id[0]='\0';assert(clearchain_device_http_scan_json(&state,samples,1,0)==NULL);
+    state.mode=CLEARCHAIN_DEVICE_MODE_CP;
+    body=clearchain_device_http_scan_json(&state,samples,1,0); assert(body);
+    root=cJSON_Parse(body); assert(!cJSON_GetObjectItemCaseSensitive(root,"batch_id"));cJSON_Delete(root);cJSON_free(body);
     assert(clearchain_device_http_get_state(&state)<0);
     assert(network_calls==0);
-    puts("PASS: documented device state and scan JSON; missing batch/empty readings rejected; upload gate");
+    puts("PASS: API v2 armed gate, repeated signed RSSI, empty final, CP without batch and upload gate");
     return 0;
 }

@@ -44,32 +44,63 @@ int clearchain_device_state_parse(const char *json, clearchain_device_state_t *o
     clearchain_device_state_t parsed = {0};
     cJSON *root;
     const cJSON *ok;
-    int version;
+    const cJSON *version, *armed, *direction, *color;
+    static const char *const directions[] = {"IN", "OUT", "MIXED"};
+    static const char *const colors[] = {"GREEN", "ORANGE", "RED"};
     int mode, phase, status;
     if (json == NULL || out == NULL || (root = cJSON_Parse(json)) == NULL) { return -1; }
     ok = cJSON_GetObjectItemCaseSensitive(root, "ok");
+    version = cJSON_GetObjectItemCaseSensitive(root, "state_version");
+    armed = cJSON_GetObjectItemCaseSensitive(root, "armed");
+    direction = cJSON_GetObjectItemCaseSensitive(root, "scan_direction");
+    color = cJSON_GetObjectItemCaseSensitive(root, "color");
     mode = name_index(root, "mode", modes, sizeof(modes) / sizeof(modes[0]));
     phase = name_index(root, "phase", phases, sizeof(phases) / sizeof(phases[0]));
     status = name_index(root, "screen_status", statuses, sizeof(statuses) / sizeof(statuses[0]));
     if (!cJSON_IsObject(root) || !cJSON_IsTrue(ok) || mode < 0 || phase < 0 || status < 0 ||
-        number_field(root, "state_version", &version, 0) != 0 ||
+        !cJSON_IsNumber(version) || version->valuedouble < 0 ||
+        version->valuedouble > UINT32_MAX ||
+        version->valuedouble != (double)(uint32_t)version->valuedouble || !cJSON_IsBool(armed) ||
+        (!cJSON_IsNull(direction) && !cJSON_IsString(direction)) ||
+        (!cJSON_IsNull(color) && !cJSON_IsString(color)) ||
         number_field(root, "tags_read", &parsed.tags_read, 0) != 0 ||
         number_field(root, "tags_expected", &parsed.tags_expected, 1) != 0 ||
         number_field(root, "progress_percent", &parsed.progress_percent, 1) != 0 ||
         number_field(root, "risk_percent", &parsed.risk_percent, 0) != 0 ||
         parsed.progress_percent > 100 || parsed.risk_percent > 100 ||
         copy_optional(root, "batch_id", parsed.batch_id, sizeof(parsed.batch_id)) != 0 ||
-        copy_optional(root, "message", parsed.message, sizeof(parsed.message)) != 0) {
+        copy_optional(root, "message", parsed.message, sizeof(parsed.message)) != 0 ||
+        strlen(parsed.message) > 60U ||
+        copy_optional(root, "mode_label", parsed.mode_label, sizeof(parsed.mode_label)) != 0 ||
+        parsed.mode_label[0] == '\0') {
         cJSON_Delete(root);
         return -1;
     }
-    parsed.state_version = (uint32_t)version;
+    if (!cJSON_IsNull(direction)) {
+        int index = name_index(root, "scan_direction", directions, 3);
+        if (index < 0) { cJSON_Delete(root); return -1; }
+        parsed.scan_direction = (uint8_t)(index + 1);
+    }
+    if (!cJSON_IsNull(color)) {
+        int index = name_index(root, "color", colors, 3);
+        if (index < 0) { cJSON_Delete(root); return -1; }
+        parsed.color = (uint8_t)(index + 1);
+    }
+    parsed.state_version = (uint32_t)version->valuedouble;
+    parsed.armed = cJSON_IsTrue(armed);
     parsed.mode = (clearchain_device_mode_t)mode;
     parsed.phase = (clearchain_device_phase_t)phase;
     parsed.screen_status = (clearchain_device_status_t)status;
     *out = parsed;
     cJSON_Delete(root);
     return 0;
+}
+
+int clearchain_device_state_can_scan(const clearchain_device_state_t *state)
+{
+    return state != NULL && state->armed && state->mode != CLEARCHAIN_DEVICE_MODE_NONE &&
+        (state->phase == CLEARCHAIN_PHASE_READY || state->phase == CLEARCHAIN_PHASE_SCANNING) &&
+        (state->mode == CLEARCHAIN_DEVICE_MODE_CP || state->batch_id[0] != '\0');
 }
 
 const char *clearchain_device_mode_name(clearchain_device_mode_t mode)
