@@ -24,9 +24,10 @@ enum {
     CC_MAX_FRAMES_PER_TICK = 16,        /* Bound work so keys and SLE keep running. */
     CC_ONLINE_STATE_POLL_MS = 500,      /* Refresh real backend state twice per second. */
     CC_OFFLINE_STATE_POLL_MS = 2000,    /* Space out retries while the backend is unreachable. */
-    CC_SINGLE_INVENTORY_INTERVAL_MS = 300, /* Interval used by the non-bench firmware. */
     CC_PENDING_POST_INTERVAL_MS = 1000, /* Upload collected readings once per second. */
     CC_R200_POWER_REPLY_TIMEOUT_MS = 800, /* Wait for each power-command response. */
+    CC_R200_POWER_READ_ATTEMPTS = 3, /* Retry a transient B7 read failure at startup. */
+    CC_R200_POWER_RETRY_DELAY_MS = 200, /* Give the reader time before retrying B7. */
     CC_R200_SAFE_TARGET_POWER_CDBM = 2000, /* 20 dBm is within both documented R200 variants. */
     CC_R200_CDBM_PER_DBM = 100 /* The protocol represents one dBm as 100 units. */
 };
@@ -36,13 +37,22 @@ static int read_r200_power(uint16_t *power_cdbm)
     uint8_t response[R200_MAX_FRAME_SIZE];
     size_t command_length, response_length;
     if (r200_protocol_build_get_power(command, sizeof(command), &command_length) != 0) { return -1; }
-    r200_uart_flush();
-    if (r200_uart_write(command, command_length) != 0 ||
-        r200_uart_wait_frame(response, sizeof(response), &response_length,
-                             CC_R200_POWER_REPLY_TIMEOUT_MS) != 0) {
-        return -1;
+    for (unsigned int attempt = 1; attempt <= CC_R200_POWER_READ_ATTEMPTS; ++attempt) {
+        r200_uart_flush();
+        if (r200_uart_write(command, command_length) != 0) {
+            osal_printk("[R200 POWER] B7 transmit failed attempt=%u\r\n", attempt);
+        } else if (r200_uart_wait_frame(response, sizeof(response), &response_length,
+                                        CC_R200_POWER_REPLY_TIMEOUT_MS) != 0) {
+            osal_printk("[R200 POWER] B7 response timeout attempt=%u\r\n", attempt);
+        } else if (r200_protocol_parse_get_power(response, response_length, power_cdbm) != 0) {
+            osal_printk("[R200 POWER] B7 invalid response attempt=%u\r\n", attempt);
+        } else {
+            osal_printk("[R200 POWER] B7 read ok attempt=%u\r\n", attempt);
+            return 0;
+        }
+        if (attempt < CC_R200_POWER_READ_ATTEMPTS) { osal_msleep(CC_R200_POWER_RETRY_DELAY_MS); }
     }
-    return r200_protocol_parse_get_power(response, response_length, power_cdbm);
+    return -1;
 }
 
 static int set_r200_power(uint16_t power_cdbm)
@@ -87,10 +97,10 @@ static void configure_r200_power(void)
 }
 static cc_device_session_t g_session;
 static int g_offline, g_failures;
-static uint64_t g_next_poll, g_next_inventory;
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-/* The offline 20-tag trial uses one native multi-poll command per window. */
+static uint64_t g_next_poll;
+/* Keep the reader in native multi-poll for each active scan window. */
 static bool g_multi_inventory_started;
+#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
 static clearchain_device_state_t g_bench = {
     .mode=CLEARCHAIN_DEVICE_MODE_NONE, .phase=CLEARCHAIN_PHASE_IDLE,
     .tags_expected=-1, .progress_percent=-1, .mode_label="LOCAL BENCH",
@@ -100,20 +110,24 @@ static struct {
     unsigned int tx, stop_tx, rx, ack, epc, no_tag, rejected;
     uint32_t dropped_at_start, bad_at_start, errors_at_start;
 } g_reader_diag;
-static int bench_start_inventory(void)
+#endif
+static int start_multi_inventory(void)
 {
     uint8_t bytes[R200_MAX_FRAME_SIZE]; size_t length;
+    if (g_multi_inventory_started) { return 0; }
     if (r200_protocol_build_multi_inventory(bytes,sizeof(bytes),&length,UINT16_MAX)!=0 ||
         r200_uart_write(bytes,length)!=0) {
         osal_printk("[R200 MULTI] start failed\r\n");
         return -1;
     }
     g_multi_inventory_started=true;
+#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
     g_reader_diag.tx++;
+#endif
     osal_printk("[R200 MULTI] native multi-poll started rounds=65535\r\n");
     return 0;
 }
-static void bench_stop_inventory(void)
+static void stop_multi_inventory(void)
 {
     uint8_t bytes[R200_MAX_FRAME_SIZE]; size_t length;
     if (!g_multi_inventory_started) { return; }
@@ -122,10 +136,13 @@ static void bench_stop_inventory(void)
         r200_uart_write(bytes,length)!=0) {
         osal_printk("[R200 MULTI] stop failed; check reader before next window\r\n");
     } else {
+#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
         g_reader_diag.stop_tx++;
+#endif
         osal_printk("[R200 MULTI] native multi-poll stopped\r\n");
     }
 }
+#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
 static void bench_reader_summary(void)
 {
     uint32_t dropped, bad, errors;
@@ -165,9 +182,7 @@ static void accept_state(const clearchain_device_state_t *state)
                 UINT16_MAX : (uint16_t)g_session.total_samples;
         }
 #endif
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-        if (!g_session.active) { bench_stop_inventory(); }
-#endif
+        if (!g_session.active) { stop_multi_inventory(); }
         clearchain_key_set_remote_mode((clearchain_mode_t)state->mode);
         (void)clearchain_display_publish_device_state(state, local_samples);
         clearchain_feedback_set_status(state->phase==CLEARCHAIN_PHASE_DONE ? (int)state->screen_status : 0);
@@ -185,9 +200,7 @@ static void handle_status(int status)
     } else {
         if (++g_failures>=3) {
             if (!g_offline) { osal_printk("[DEVICE V2] offline; scan suspended\r\n"); }
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-            bench_stop_inventory();
-#endif
+            stop_multi_inventory();
             g_offline=1; cc_session_cancel(&g_session); g_session.latched=1;
             clearchain_display_set_backend_offline(1);
         }
@@ -214,9 +227,7 @@ static void consume_keys(void)
             (CLEARCHAIN_DEVICE_MODE_S1+event-CLEARCHAIN_KEY_STAGE_1);
         clearchain_device_state_t state;
         /* Discard before Stop/select, including a failed request. */
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-        bench_stop_inventory();
-#endif
+        stop_multi_inventory();
         cc_session_cancel(&g_session); g_session.latched=1; r200_uart_flush();
         if (poll_state()!=200) { continue; }
         if (g_session.state.phase==CLEARCHAIN_PHASE_SCANNING) {
@@ -255,9 +266,7 @@ static int post_pending(int final)
 #endif
     g_session.pending_count=0;
     if (final || status!=200) {
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-        bench_stop_inventory();
-#endif
+        stop_multi_inventory();
         cc_session_cancel(&g_session); g_session.latched=1; r200_uart_flush();
     }
     handle_status(status);
@@ -284,12 +293,14 @@ static void reader_tick(uint64_t now)
         if (r200_uart_wait_frame(response,sizeof(response),&length,CC_NO_WAIT_MS)!=0) { break; }
 #if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
         g_reader_diag.rx++;
+#endif
         if (response[1]==R200_RESPONSE_FRAME_TYPE &&
             (response[2]==R200_NATIVE_MULTI_COMMAND || response[2]==R200_NATIVE_STOP_COMMAND)) {
+#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
             g_reader_diag.ack++;
+#endif
             continue;
         }
-#endif
         int parsed=r200_protocol_parse_inventory(response,length,epc,sizeof(epc),&rssi);
         if (parsed!=0) {
 #if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
@@ -304,9 +315,7 @@ static void reader_tick(uint64_t now)
         if (g_session.pending_count==CC_SESSION_MAX_PENDING && post_pending(0)!=200) { return; }
         if (!g_session.active) { return; }
         if (cc_session_add(&g_session,epc,rssi)!=0) {
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-            bench_stop_inventory();
-#endif
+            stop_multi_inventory();
             cc_session_cancel(&g_session); g_session.latched=1;
             (void)clearchain_display_show_error((uint8_t)g_session.state.mode,CLEARCHAIN_ERROR_CAPACITY);
             osal_printk("[DEVICE V2] reader capacity reached; scan suspended\r\n"); return;
@@ -314,19 +323,7 @@ static void reader_tick(uint64_t now)
         osal_printk("[DEVICE V2] EPC=%s RSSI=%d dBm unique=%u samples=%u\r\n",
             epc,(int)rssi,g_session.unique_count,g_session.total_samples);
     }
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
     (void)now;
-#else
-    if (g_session.active && now>=g_next_inventory) {
-        uint8_t bytes[7]; size_t n;
-        if (r200_protocol_build_inventory(bytes,sizeof(bytes),&n)==0 && r200_uart_write(bytes,n)==0) {
-            g_next_inventory=now+CC_SINGLE_INVENTORY_INTERVAL_MS;
-        } else {
-            cc_session_cancel(&g_session); g_session.latched=1;
-            (void)clearchain_display_show_error((uint8_t)g_session.state.mode,CLEARCHAIN_ERROR_READER);
-        }
-    }
-#endif
 }
 static void *wifi_task(void *arg)
 {
@@ -365,25 +362,23 @@ static void *device_task(void *arg)
         consume_keys();
         if (now>=g_next_poll) { (void)poll_state(); }
         if (!g_offline && cc_session_start(&g_session,uapi_systick_get_ms())) {
-            g_next_inventory=0; r200_uart_flush();
+            r200_uart_flush();
 #if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
             (void)memset(&g_reader_diag,0,sizeof(g_reader_diag));
             r200_uart_get_diagnostics(&g_reader_diag.dropped_at_start,
                 &g_reader_diag.bad_at_start,&g_reader_diag.errors_at_start);
-            if (bench_start_inventory()!=0) {
+#endif
+            if (start_multi_inventory()!=0) {
                 cc_session_cancel(&g_session); g_session.latched=1;
                 (void)clearchain_display_show_error((uint8_t)g_session.state.mode,CLEARCHAIN_ERROR_READER);
                 continue;
             }
-#endif
             osal_printk("[DEVICE V2] capture begins mode=%s\r\n",clearchain_device_mode_name(g_session.state.mode));
         }
         if (g_session.active && !g_offline) {
             now=uapi_systick_get_ms(); reader_tick(now);
             if (cc_session_finished(&g_session,now)) {
-#if defined(CONFIG_CLEARCHAIN_DEVICE_BENCH)
-                bench_stop_inventory();
-#endif
+                stop_multi_inventory();
                 (void)post_pending(1);
             }
             else if (g_session.active && g_session.pending_count &&
